@@ -1,0 +1,163 @@
+{
+  "manifest_version": 3,
+  "name": "BetBoom Auto Pattern",
+  "version": "2.3.1",
+  "description": "Automação de padrões visuais para jogos Bac Bo na plataforma BetBoom. MVP v2.1 — Captura real via WebSocket + Estratégia Will.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "debugger"
+  ],
+  "host_permissions": [
+    "*://*.betboom.com/*",
+    "*://*.betboom.bet.br/*",
+    "*://br.betboom.com/*",
+    "*://*.betboom.mx/*",
+    "*://*.billing-boom.com/*",
+    "*://launch.billing-boom.com/*",
+    "*://*.evo-games.com/*",
+    "*://*.evolution.com/*",
+    "*://*.evobetting.com/*",
+    "*://*.egcvi.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "js/background.js"
+  },
+  "content_scripts": [
+    {
+      "comment": "Frame principal BetBoom — lógica completa do robô",
+      "matches": [
+        "*://*.betboom.com/*",
+        "*://*.betboom.bet.br/*",
+        "*://br.betboom.com/*",
+        "*://*.betboom.mx/*"
+      ],
+      "js": [
+        "js/infra-guardrails.js",
+        "js/click-validator.js",
+        "js/chip-detector.js",
+        "js/calibrator.js",
+        "js/bet-confirmation-tracker.js",
+        "js/evidence-engine.js",
+        "js/idempotency-layer.js",
+        "js/event-store.js",
+        "js/round-lifecycle.js",
+        "js/plan-executor.js",
+        "js/replay-engine.js",
+        "js/calibration-loop.js",
+        "js/lifecycle-gate.js",
+        "js/lifecycle-replay-projector.js",
+        "js/calibration-lifecycle-adapter.js",
+        "js/calibration-plan-adapter.js",
+        "js/calibration-replay-adapter.js",
+        "js/config.js",
+        "js/collector.js",
+        "js/history-store.js",
+        "js/history-normalizer.js",
+        "js/history-capture.js",
+        "js/history-diff.js",
+        "js/history-plan.js",
+        "js/history-graph.js",
+        "js/history-renderer.js",
+        "js/history-integrity.js",
+        "js/patterns.js",
+        "js/decision-model.js",
+        "js/f1-scorer.js",
+        "js/graph-engine.js",
+        "js/conviction-engine.js",
+        "js/consensus-engine.js",
+        "js/context-health-engine.js",
+        "js/operational-zones.js",
+        "js/operational-candidate-pipeline.js",
+        "js/interaction-intelligence.js",
+        "js/temporal-confidence-engine.js",
+        "js/behavior-drift-engine.js",
+        "js/table-degradation-engine.js",
+        "js/pattern-entropy-engine.js",
+        "js/robo-runtime.js",
+        "js/plan-visualizer.js",
+        "js/test-robo-runtime.js",
+        "js/decision.js",
+        "js/breakpoint-engine.js",
+        "js/explainability-engine.js",
+        "js/fsm-integration.js",
+        "js/observability.js",
+        "js/executor.js",
+        "js/debug-graph-ui.js",
+        "js/overlay.js",
+        "js/telemetry.js",
+        "js/content.js"
+      ],
+      "css": [
+        "css/overlay.css"
+      ],
+      "run_at": "document_start",
+      "all_frames": false,
+      "match_about_blank": false
+    },
+    {
+      "comment": "BBCalibrator no MAIN world — expoe API no console (acessivel via DevTools)",
+      "matches": [
+        "*://*.betboom.com/*",
+        "*://*.betboom.bet.br/*",
+        "*://br.betboom.com/*",
+        "*://*.betboom.mx/*"
+      ],
+      "js": ["js/calibrator-main.js"],
+      "run_at": "document_idle",
+      "all_frames": false,
+      "world": "MAIN"
+    },
+    {
+      "comment": "Frame do jogo Evolution — apenas bridge WS (sem UI, sem lógica de aposta)",
+      "matches": [
+        "*://*.evo-games.com/*",
+        "*://*.billing-boom.com/*",
+        "*://launch.billing-boom.com/*",
+        "*://*.evolution.com/*",
+        "*://*.evobetting.com/*",
+        "*://*.egcvi.com/*"
+      ],
+      "js": [
+        "js/chip-detector.js",
+        "js/evidence-engine.js",
+        "js/config.js",
+        "js/content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": false,
+      "match_origin_as_fallback": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["js/injected.js"],
+      "matches": [
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "*://*.betboom.com/*",
+        "*://*.betboom.bet.br/*",
+        "*://br.betboom.com/*",
+        "*://*.betboom.mx/*",
+        "*://*.billing-boom.com/*",
+        "*://launch.billing-boom.com/*",
+        "*://*.evo-games.com/*"
+      ]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

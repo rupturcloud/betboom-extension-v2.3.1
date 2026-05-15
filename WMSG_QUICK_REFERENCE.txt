@@ -1,0 +1,160 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    18 PADRÕES WMSG — REFERÊNCIA RÁPIDA                       ║
+║                          Will Dados Pro v2.3.1                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+LEGENDA:
+  A = Azul (CASA / Player)    |  E = Empate (Tie)
+  V = Vermelho (FORA / Banker)|  → = Entrada esperada
+
+═══════════════════════════════════════════════════════════════════════════════
+PADRÕES BÁSICOS (Sequências Puras)
+═══════════════════════════════════════════════════════════════════════════════
+
+🔷 WMSG-001:  [A, A, A, V]  →  FORA (V)
+   3 azuis seguidos de 1 vermelho. Entra no vermelho (contra a sequência).
+   Confiança: 85% | Gale: Não
+
+🔴 WMSG-002:  [V, V, V, A]  →  CASA (A)
+   3 vermelhos seguidos de 1 azul. Entra no azul (contra a sequência).
+   Confiança: 85% | Gale: Não
+
+═══════════════════════════════════════════════════════════════════════════════
+PADRÕES DE ZIGUE-ZAGUE (Alternância)
+═══════════════════════════════════════════════════════════════════════════════
+
+🔷 WMSG-003:  [A, V, A, V]  →  CASA (A)
+   Zigue-zague: azul-vermelho-azul-vermelho. Próximo esperado: azul.
+   Confiança: 85% | Gale: Não
+
+🔴 WMSG-004:  [V, A, V, A]  →  FORA (V)
+   Zigue-zague: vermelho-azul-vermelho-azul. Próximo esperado: vermelho.
+   Confiança: 85% | Gale: Não
+
+═══════════════════════════════════════════════════════════════════════════════
+PADRÕES DE ESPELHO (2-2)
+═══════════════════════════════════════════════════════════════════════════════
+
+🔷 WMSG-005:  [A, A, V, V]  →  CASA (A)
+   Espelho 2-2: 2 azuis, 2 vermelhos. Vira para azul.
+   Confiança: 85% | Gale: Não
+
+🔴 WMSG-006:  [V, V, A, A]  →  FORA (V)
+   Espelho 2-2: 2 vermelhos, 2 azuis. Vira para vermelho.
+   Confiança: 85% | Gale: Não
+
+═══════════════════════════════════════════════════════════════════════════════
+PADRÕES DE QUEBRA (Interrução no meio)
+═══════════════════════════════════════════════════════════════════════════════
+
+🔷 WMSG-007:  [A, A, V, A]  →  FORA (V)
+   AABA — quebra com vermelho no meio de azuis. Aposta no vermelho (quebra).
+   Confiança: 85% | Gale: Não
+
+🔴 WMSG-008:  [V, V, A, V]  →  CASA (A)
+   VVAV — quebra com azul no meio de vermelhos. Aposta no azul (quebra).
+   Confiança: 85% | Gale: Não
+
+═══════════════════════════════════════════════════════════════════════════════
+PADRÕES DE SANDUÍCHE (Cor-Oposto-Cor)
+═══════════════════════════════════════════════════════════════════════════════
+
+🔷 WMSG-009:  [A, V, V, A]  →  FORA (V)
+   AVVA — azul nos extremos, vermelhos no meio. Aposta no vermelho (repetiçao).
+   Confiança: 85% | Gale: Não
+
+🔴 WMSG-010:  [V, A, A, V]  →  CASA (A)
+   VAAV — vermelho nos extremos, azuis no meio. Aposta no azul (repetição).
+   Confiança: 85% | Gale: Não
+
+═══════════════════════════════════════════════════════════════════════════════
+PADRÕES DE REVERSÃO (3 Iguais)
+═══════════════════════════════════════════════════════════════════════════════
+
+🔷 WMSG-011:  [A, V, V, V]  →  CASA (A)
+   Azul seguido de 3 vermelhos. Aposta no azul (reversão de 3).
+   Confiança: 85% | Gale: Não
+
+🔴 WMSG-012:  [V, A, A, A]  →  FORA (V)
+   Vermelho seguido de 3 azuis. Aposta no vermelho (reversão de 3).
+   Confiança: 85% | Gale: Não
+
+═══════════════════════════════════════════════════════════════════════════════
+PADRÕES COM EMPATE (E = Tie)
+═══════════════════════════════════════════════════════════════════════════════
+
+🟡 WMSG-013:  [E, A, A, A]  →  FORA (V)
+   Empate inicial + 3 azuis. Após empate, aposta no oposto (vermelho).
+   Confiança: 85% | Gale: Não
+
+🟡 WMSG-014:  [E, V, V, V]  →  CASA (A)
+   Empate inicial + 3 vermelhos. Após empate, aposta no oposto (azul).
+   Confiança: 85% | Gale: Não
+
+🟡 WMSG-015:  [A, E, A, A]  →  FORA (V)
+   Empate NO MEIO de azuis. Quebra após empate, aposta em vermelho.
+   Confiança: 85% | Gale: Não
+
+🟡 WMSG-016:  [V, E, V, V]  →  CASA (A)
+   Empate NO MEIO de vermelhos. Quebra após empate, aposta em azul.
+   Confiança: 85% | Gale: Não
+
+🟡 WMSG-017:  [A, A, E, A]  →  FORA (V)
+   3 azuis com empate no penúltimo. Quebra a sequência, aposta em vermelho.
+   Confiança: 85% | Gale: Não
+
+🟡 WMSG-018:  [V, V, E, V]  →  CASA (A)
+   3 vermelhos com empate no penúltimo. Quebra a sequência, aposta em azul.
+   Confiança: 85% | Gale: Não
+
+═══════════════════════════════════════════════════════════════════════════════
+COMO USAR NA PRÁTICA
+═══════════════════════════════════════════════════════════════════════════════
+
+1. MONITORAR o tabuleiro (últimas 4 casas)
+   Ex: ... [A] [V] [A] [V]  ← Essas 4 casas
+
+2. COMPARAR com os 18 padrões acima
+   Sequência [A, V, A, V] = WMSG-003
+
+3. ENTRAR conforme padrão
+   WMSG-003 diz: CASA (azul)
+   Então: Aposta em CASA/PLAYER/AZUL
+
+4. CONFIRMAR aposta no DOM
+   Saldo mudou? Aposta registrada.
+   Se sim: Aguardar resultado
+
+5. ATUALIZAR histórico
+   Se WIN: Reset bankroll, continua
+   Se LOSS: Martingale (dobra), tenta de novo
+
+═══════════════════════════════════════════════════════════════════════════════
+PONTOS-CHAVE
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Sempre observar as ÚLTIMAS 4 casas (sequência)
+✓ Padrões com empate (E) têm lógica especial
+✓ Sem gale: para na primeira aposta
+✓ Confiança 85%: alta (WMSG sequencial)
+✓ Se nenhum padrão casa: aguardar próxima rodada
+
+═══════════════════════════════════════════════════════════════════════════════
+EXEMPLO DE FLUXO REAL
+═══════════════════════════════════════════════════════════════════════════════
+
+Rodada 1:  [A]             Tabuleiro: [_,_,_,A]        Nenhum padrão ainda
+Rodada 2:  [A]             Tabuleiro: [_,_,A,A]        Nenhum padrão ainda
+Rodada 3:  [V]             Tabuleiro: [_,A,A,V]        Nenhum padrão ainda
+Rodada 4:  [V]             Tabuleiro: [A,A,V,V]        ✓ WMSG-005 CASA!
+                                                        Aposta em AZUL
+
+Rodada 5:  [A]             RESULTADO: WIN ✓             Saldo: +aposta
+                           Reset bankroll
+                           Continua monitorando...
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Desenvolvido com: Chrome MV3, JavaScript vanilla
+Fonte dos padrões: will-18-padroes.html (Will Dados Pro)
+Data: 2026-05-13 | Versão: 2.3.1

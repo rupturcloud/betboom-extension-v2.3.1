@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Teste WMSG Patterns</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #0f1115;
+      color: #e6e8ee;
+      padding: 20px;
+    }
+    .test-group {
+      margin: 20px 0;
+      padding: 15px;
+      border: 1px solid #2a2f3a;
+      border-radius: 8px;
+    }
+    .pass { color: #25d36e; }
+    .fail { color: #ff6b6b; }
+    .info { color: #6ea8ff; }
+    .pattern-card {
+      background: #181b22;
+      padding: 10px;
+      margin: 8px 0;
+      border-left: 3px solid #1d4ed8;
+      border-radius: 4px;
+    }
+    code {
+      background: #0f141c;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Teste dos 18 Padrões WMSG</h1>
+<p class="info">Validação das sequências exatas e confiança de matching</p>
+
+<div class="test-group">
+  <h2>Padrões Carregados</h2>
+  <div id="patterns-list"></div>
+</div>
+
+<div class="test-group">
+  <h2>Testes de Sequência Exata</h2>
+  <div id="sequential-tests"></div>
+</div>
+
+<div class="test-group">
+  <h2>Resumo</h2>
+  <div id="summary"></div>
+</div>
+
+<script>
+// Mock dos módulos globais
+window.CONFIG = {
+  padroesAtivos: {
+    xadrez: true, reversao: true, posEmpate: true, diagonal: true, casadinho: true,
+    linhaDevedora: true, quebrapadrao: true, sequenciaDe2: true, sequenciaDe3: true,
+    ponta: true, xadrezSemGale: true, pingPong: true, xadrezDuplo: true,
+    tendencia: true, correcaoEmpate: true, espelho: true, canalHorizontal: true,
+    reversaoDiagonal: true
+  },
+  strategyLibrary: []
+};
+
+window.Collector = {
+  getHistorico: () => []
+};
+
+window.Logger = {
+  debug: () => {},
+  warn: () => {},
+  error: () => {}
+};
+
+window.BBStrategyUtils = {
+  normalizeSequenceBase: (seq) => seq || [],
+  normalizeCor: (cor) => cor,
+  sequenceToLabel: (seq) => seq.join('-'),
+  ensureStrategyLibrary: (list) => list || []
+};
+
+// Carregar patterns.js dinamicamente
+const script = document.createElement('script');
+script.src = '../js/patterns.js';
+script.onload = () => {
+  testPatterns();
+};
+document.head.appendChild(script);
+
+function testPatterns() {
+  const list = document.getElementById('patterns-list');
+  const sequential = document.getElementById('sequential-tests');
+  const summary = document.getElementById('summary');
+
+  try {
+    // Listar padrões WMSG
+    const wmsgPatterns = window.PatternEngine.getWMSGPatterns();
+
+    list.innerHTML = `
+      <p class="pass">✅ ${wmsgPatterns.length} padrões WMSG carregados</p>
+      <p class="info">Total de estratégias: ${window.PatternEngine.totalPadroes}</p>
+    `;
+
+    // Exibir primeiros 6 padrões
+    wmsgPatterns.slice(0, 6).forEach(p => {
+      const patternHtml = `
+        <div class="pattern-card">
+          <strong>${p.id}</strong> → [${p.sequence.map(c => c.charAt(0).toUpperCase()).join(',')}]
+          → Entrar: <code>${p.enter}</code>
+        </div>
+      `;
+      list.innerHTML += patternHtml;
+    });
+
+    // Testes de sequência exata
+    const testCases = [
+      { id: 'WMSG-001', seq: ['azul','azul','azul','vermelho'], expected: 'vermelho' },
+      { id: 'WMSG-002', seq: ['vermelho','vermelho','vermelho','azul'], expected: 'azul' },
+      { id: 'WMSG-003', seq: ['azul','vermelho','azul','vermelho'], expected: 'azul' },
+      { id: 'WMSG-005', seq: ['azul','azul','vermelho','vermelho'], expected: 'azul' },
+      { id: 'WMSG-018', seq: ['vermelho','vermelho','empate','vermelho'], expected: 'azul' },
+    ];
+
+    let passed = 0;
+    let failed = 0;
+
+    testCases.forEach(test => {
+      const resultado = window.PatternEngine.melhorPadrao(test.seq);
+      const isPass = resultado && resultado.acao === test.expected;
+      const status = isPass ? '✅ PASS' : '❌ FAIL';
+      const passClass = isPass ? 'pass' : 'fail';
+
+      sequential.innerHTML += `
+        <div class="pattern-card">
+          <span class="${passClass}">${status}</span>
+          <strong>${test.id}</strong>
+          Esperado: <code>${test.expected}</code>
+          Obtido: <code>${resultado?.acao || 'null'}</code>
+          Confiança: ${resultado?.confianca || 0}%
+        </div>
+      `;
+
+      if (isPass) passed++; else failed++;
+    });
+
+    // Resumo
+    summary.innerHTML = `
+      <p class="pass">✅ Testes passados: ${passed}</p>
+      <p class="${failed > 0 ? 'fail' : 'pass'}">Testes falhados: ${failed}</p>
+      <p class="info">Taxa de sucesso: ${Math.round((passed / (passed + failed)) * 100)}%</p>
+    `;
+
+  } catch (e) {
+    summary.innerHTML = `<p class="fail">❌ Erro: ${e.message}</p>`;
+    console.error(e);
+  }
+}
+</script>
+
+</body>
+</html>
