@@ -479,19 +479,28 @@
     atualizarStatusWS();
   }
 
-  // Walker recursivo de balance — versão robusta (R99-FECHAMENTO+saldo-fix).
-  // Antes: pegava o PRIMEIRO match de /balance|wallet|saldo|cash/ → encontrava
-  // `lockedBalance: 0` antes do `balance: 15.87` e o overlay zerava o saldo.
-  // Agora: coleta TODOS os matches, descarta valores 0, penaliza sub-saldos
-  // (locked/bonus/promotional/frozen/blocked/reserved/pending) e retorna o
-  // MAIOR valor positivo de um path "limpo". Se só houver sub-saldos, ainda
-  // retorna o maior deles como último recurso.
+  // Walker recursivo de balance — versão R99-A1+saldo-fix.
+  // Estratégia:
+  //  1. Coleta TODOS os matches, descarta valores 0/negativos.
+  //  2. Separa em "limpos" (path neutro), "penalizados" (sub-saldos) e
+  //     "REJEITADOS" (saldos agregados de longo prazo — total/lifetime/
+  //     gross/accumulated/deposit/withdraw/winning/profit etc.) que NÃO
+  //     entram em nenhum bucket (são lixo conhecido).
+  //  3. Retorna o MENOR valor limpo (saldo principal costuma ser o
+  //     "wallet balance" simples, não o total acumulado). Fallback pro
+  //     menor penalizado se não houver limpo.
+  //  4. Loga o path escolhido pra debug — ajuda achar campos certos/errados.
   function extrairBalanceRecursivo(payload) {
     if (!payload || typeof payload !== 'object') return null;
     const BALANCE_PATH_RE = /balance|wallet|saldo|cash/i;
+    // PENALTY_PATH_RE: sub-saldos que ainda podem ser saldo real mas com nome
+    // específico. Aceito como fallback.
     const PENALTY_PATH_RE = /lock|bonus|promo|frozen|block|reserved|pending|hold|fee|tax/i;
-    const candidatosLimpos = [];
+    // REJECT_PATH_RE: agregados que NUNCA são o saldo atual da banca.
+    const REJECT_PATH_RE = /lifetime|total[A-Z_]|gross|accumulat|deposit|withdraw|winning|profit|loss|wager|turnover|ganho|lucro|prejuizo/i;
+    const candidatosLimpos = []; // { valor, path }
     const candidatosPenalizados = [];
+    const candidatosRejeitados = []; // só pra log
     let visited = 0;
     const MAX_VISITED = 1500;
     const MAX_DEPTH = 8;
@@ -503,10 +512,11 @@
       if (typeof value === 'string' || typeof value === 'number') {
         if (BALANCE_PATH_RE.test(path)) {
           const n = Number(String(value).replace(/[^\d.-]/g, ''));
-          // ignora 0 e negativos: quase sempre são saldos secundários zerados
           if (Number.isFinite(n) && n > 0) {
-            if (PENALTY_PATH_RE.test(path)) candidatosPenalizados.push(n);
-            else candidatosLimpos.push(n);
+            const entry = { valor: n, path };
+            if (REJECT_PATH_RE.test(path)) candidatosRejeitados.push(entry);
+            else if (PENALTY_PATH_RE.test(path)) candidatosPenalizados.push(entry);
+            else candidatosLimpos.push(entry);
           }
         }
         return;
@@ -525,8 +535,41 @@
     }
 
     walk(payload, '', 0);
-    if (candidatosLimpos.length > 0) return Math.max(...candidatosLimpos);
-    if (candidatosPenalizados.length > 0) return Math.max(...candidatosPenalizados);
+
+    // Debug: loga todos os candidatos pra inspeção. Crítico pra identificar
+    // qual campo do WS BetBoom carrega o saldo real vs lixo agregado.
+    if ((candidatosLimpos.length + candidatosPenalizados.length + candidatosRejeitados.length) > 0
+        && typeof console !== 'undefined') {
+      try {
+        const dump = {
+          limpos: candidatosLimpos.map(c => `${c.path}=${c.valor}`),
+          penalizados: candidatosPenalizados.map(c => `${c.path}=${c.valor}`),
+          rejeitados: candidatosRejeitados.map(c => `${c.path}=${c.valor}`)
+        };
+        console.debug('[walker:saldo] candidatos:', JSON.stringify(dump));
+      } catch (_) {}
+    }
+
+    // Estratégia conservadora: maior valor limpo. Mas se houver MUITO limpo
+    // com valores muito diferentes (ratio > 100x), suspeito de mistura
+    // (saldo real + total acumulado escondido em path neutro). Nesse caso
+    // pega o MENOR — saldo principal raramente é o cumulativo.
+    function escolherDeBucket(bucket, label) {
+      if (bucket.length === 0) return null;
+      const valores = bucket.map(c => c.valor);
+      const max = Math.max(...valores);
+      const min = Math.min(...valores);
+      const escolhido = (bucket.length > 1 && max / min > 100) ? min : max;
+      const path = bucket.find(c => c.valor === escolhido)?.path || '?';
+      try {
+        console.debug(`[walker:saldo] ${label}: ${path} = R$ ${escolhido} (${bucket.length} candidatos, ratio max/min=${(max/min).toFixed(1)})`);
+      } catch (_) {}
+      return escolhido;
+    }
+    const limpo = escolherDeBucket(candidatosLimpos, 'escolhido(limpo)');
+    if (limpo != null) return limpo;
+    const penalizado = escolherDeBucket(candidatosPenalizados, 'escolhido(penalizado)');
+    if (penalizado != null) return penalizado;
     return null;
   }
 
@@ -1745,11 +1788,12 @@
       return;
     }
 
-    // R99-FECHAMENTO+saldo: saldo DOM enviado pelo subframe Evolution.
-    // Aplicado como REDE DE SEGURANÇA: só sobrescreve CONFIG.saldoReal se
-    // o walker WS ainda não trouxe nada (null) OU se o WS está retornando 0
-    // (típico de payloads com lockedBalance/promotionalBalance zerados).
-    // Se o WS tem valor > 0, ele ganha (fonte primária).
+    // R99-A1+saldo: saldo DOM enviado pelo subframe Evolution.
+    // REGRA REVISTA: walker WS é fonte canônica. DOM só preenche quando WS
+    // não trouxe nada (null) ou retornou 0. Em caso de divergência, SÓ LOGA
+    // — não sobrescreve. Antes a regra "DOM ganha em divergência > 30%"
+    // permitia o scraper morder elemento errado (ranking, total winning, etc)
+    // e plantar valor zumbi no overlay.
     if (IS_TOP_FRAME && event.data?.source === 'bb-saldo-dom') {
       try {
         const valor = Number(event.data.valor);
@@ -1757,12 +1801,9 @@
         const saldoWS = Number(CONFIG.saldoReal);
         const wsValido = Number.isFinite(saldoWS) && saldoWS > 0;
         if (!wsValido) {
-          // WS sem valor (null/0) — DOM assume.
           aplicarSaldoOficial(valor, `dom:${event.data.seletor || 'evo'}`);
         } else if (Math.abs(saldoWS - valor) / Math.max(saldoWS, valor) > 0.3) {
-          // Divergência > 30% entre WS e DOM. Prefere DOM (UI visível ao operador).
-          console.warn(`[BetBoom Auto] [saldo] divergência WS=R$${saldoWS.toFixed(2)} DOM=R$${valor.toFixed(2)} → usando DOM`);
-          aplicarSaldoOficial(valor, `dom:${event.data.seletor || 'evo'}`);
+          console.warn(`[BetBoom Auto] [saldo] divergência WS=R$${saldoWS.toFixed(2)} DOM=R$${valor.toFixed(2)} seletor="${event.data.seletor}" — mantendo WS (canônico)`);
         }
       } catch (_) { }
       return;
