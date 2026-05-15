@@ -1835,15 +1835,23 @@ const Overlay = (() => {
         BBConfigUtils.applyPersistedConfig(CONFIG, data.config);
       }
 
-      // Usar o saldo real lido do WS como banca inicial. Fallback para bancaInicial se saldo ainda não chegou.
-      const bancaParaIniciar = Number.isFinite(Number(CONFIG.saldoReal)) && Number(CONFIG.saldoReal) > 0
-        ? Number(CONFIG.saldoReal)
-        : CONFIG.bancaInicial;
+      // R99-A1+saldo: NÃO usar bancaInicial persistida como fallback de saldo.
+      // bancaInicial é config (referência de cálculo de risco/stake), não snapshot
+      // de saldo. Se saldoReal ainda não chegou via walker WS, esperamos —
+      // DecisionEngine.iniciar(0) é seguro (não vai apostar com banca 0).
+      // Antes: fallback usava 2969 zumbi do chrome.storage e plantava no overlay.
+      const saldoRealNum = Number(CONFIG.saldoReal);
+      const bancaParaIniciar = Number.isFinite(saldoRealNum) && saldoRealNum > 0
+        ? saldoRealNum
+        : 0;
+      if (bancaParaIniciar === 0) {
+        console.warn('[BetBoom Auto] iniciarBot: saldoReal=null/0 — aguardando walker WS. DecisionEngine inicia com 0 (sem apostar até saldo chegar).');
+      }
       Collector.iniciar({ usarDOM: false });
       DecisionEngine.iniciar(bancaParaIniciar);
       if (typeof ObservabilityEngine !== 'undefined' && ObservabilityEngine.iniciarSessao) {
         ObservabilityEngine.iniciarSessao({
-          saldoInicial: Number.isFinite(Number(CONFIG.saldoReal)) ? Number(CONFIG.saldoReal) : null
+          saldoInicial: Number.isFinite(saldoRealNum) && saldoRealNum > 0 ? saldoRealNum : null
         });
       }
       aplicarModoDebug();

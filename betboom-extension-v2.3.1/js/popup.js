@@ -62,18 +62,15 @@ document.addEventListener('DOMContentLoaded', () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab) return;
 
-      // Pede o saldo atual ao content script
+      // R99-A1+saldo: APENAS exibe o saldo atual no popup, NÃO persiste como
+      // bancaInicial. Antes, persistir cravava um snapshot do saldo daquele
+      // momento no chrome.storage, virando "saldo zumbi" usado como fallback
+      // no iniciarBot do overlay (causa do R$ 2969 fixo).
       chrome.tabs.sendMessage(tab.id, { type: 'GET_GAME_DATA' }, (response) => {
         if (response && response.balance) {
-          // Extrai valor numérico do formato "R$ X.XXX,XX"
-          const valor = parseFloat(response.balance.replace(/[^\d,.-]/g, '').replace(',', '.'));
-          if (!isNaN(valor) && valor > 0) {
-            const el = document.getElementById('cfg-bancaInicial');
-            if (el) {
-              el.textContent = response.balance;
-              // Atualiza a CONFIG também
-              persistirConfigParcial({ bancaInicial: valor });
-            }
+          const el = document.getElementById('cfg-bancaInicial');
+          if (el) {
+            el.textContent = response.balance;
           }
         }
       });
