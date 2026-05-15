@@ -2100,7 +2100,7 @@
     console.log('[BetBoom Auto] [subframe] bridge-only ativo');
     // O subframe já escuta comandos via tratarMensagemWindow (registrado acima)
     // Expor BB_CLICK_CMD globalmente para teste via console
-    window.BB_CLICK = async (alvo = 'player') => executarComandoClique(alvo);
+    window.BB_CLICK = async (alvo = 'player', valor = null) => executarComandoClique(alvo, valor);
     console.log('[BetBoom Auto] [subframe] BB_CLICK("player"/"banker"/"tie") disponível');
 
     // R99.1: expõe testarSeletores TAMBÉM no subframe para diagnóstico do iframe Evolution.
@@ -2364,7 +2364,12 @@
       //    cai pra CDP heurístico internamente se DOM falhar.
       const iframes = Array.from(document.querySelectorAll('iframe'));
       const evoFrame = iframes.find(f =>
-        f.src && (f.src.includes('evo-games.com') || f.src.includes('billing-boom.com'))
+        f.src && (
+          f.src.includes('evo-games.com') ||
+          f.src.includes('billing-boom.com') ||
+          f.src.includes('evolution.com') ||
+          f.src.includes('evo-global.com')
+        )
       );
       if (evoFrame && evoFrame.contentWindow) {
         console.log(`[BB_CLICK] 🌉 BRIDGE DOM (caminho principal): ${alvo} | valor: ${valor}`);
