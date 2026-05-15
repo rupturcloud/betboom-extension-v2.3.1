@@ -131,6 +131,7 @@
         "js/chip-detector.js",
         "js/evidence-engine.js",
         "js/config.js",
+        "js/realizarAposta.js",
         "js/content.js"
       ],
       "run_at": "document_start",

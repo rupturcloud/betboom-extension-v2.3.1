@@ -735,26 +735,26 @@
         const _hsColor = _hsCorMap[resultado.cor] || null;
         const _hsSignature = (typeof HistoryStore !== 'undefined' && HistoryStore.generateSignature)
           ? HistoryStore.generateSignature({
-              gameId: _hsRoundId,
-              vencedor: _hsVencedor,
-              playerScore: resultado.playerScore,
-              bankerScore: resultado.bankerScore,
-              occurrence: 0
-            })
+            gameId: _hsRoundId,
+            vencedor: _hsVencedor,
+            playerScore: resultado.playerScore,
+            bankerScore: resultado.bankerScore,
+            occurrence: 0
+          })
           : (_hsRoundId
-              ? `gid:${_hsRoundId}:${_hsVencedor}`
-              : (resultado.signature || `auto:${_hsVencedor}:${resultado.playerScore}:${resultado.bankerScore}:0`));
+            ? `gid:${_hsRoundId}:${_hsVencedor}`
+            : (resultado.signature || `auto:${_hsVencedor}:${resultado.playerScore}:${resultado.bankerScore}:0`));
         const _hsRes = HistoryStore.addRound({
-          roundId:     _hsRoundId,
-          result:      (_hsVencedor || '').toLowerCase() || null,
-          color:       _hsColor,
-          timestamp:   Number(resultado.timestamp) || Date.now(),
-          source:      'websocket',
-          confidence:  1.0,
-          signature:   _hsSignature,
+          roundId: _hsRoundId,
+          result: (_hsVencedor || '').toLowerCase() || null,
+          color: _hsColor,
+          timestamp: Number(resultado.timestamp) || Date.now(),
+          source: 'websocket',
+          confidence: 1.0,
+          signature: _hsSignature,
           playerScore: resultado.playerScore,
           bankerScore: resultado.bankerScore,
-          raw:         resultado
+          raw: resultado
         });
         if (_hsRes && _hsRes.added) {
           console.log(`[HistoryStore-WIRE] addRound novo round confirmado: ${_hsRoundId || _hsSignature}`);
@@ -896,17 +896,29 @@
     const payload = safeJsonParse(envelope.text);
     if (!payload) return;
 
-    // R99-FECHAMENTO: walker recursivo de balance é a FONTE ÚNICA de saldo.
-    // Qualquer payload WS (qualquer canal, qualquer profundidade) que tenha
-    // chave casando /balance|wallet|saldo|cash/ atualiza CONFIG.saldoReal
-    // imediatamente. Source = canal de origem (evo-game | betboom-platform).
-    // Os handlers específicos NÃO leem mais balance — só esta linha aplica.
+    // === GROK SALDO FIX - Prioridade Real Balance ===
+    // Antes de usar o walker genérico, tenta extrair o campo certo diretamente
+    // do payload (evita pegar lockedBalance, bonusBalance, promotionalBalance etc).
     try {
-      const balance = extrairBalanceRecursivo(payload);
-      if (balance != null && Number.isFinite(balance)) {
-        aplicarSaldoOficial(balance, envelope.channel || 'walker');
+      if (payload && payload.balance !== undefined) {
+        let real = payload.balance;
+        // Prioridade: campos reais (evita bônus)
+        if (payload.realBalance !== undefined) real = payload.realBalance;
+        else if (payload.available !== undefined) real = payload.available;
+        else if (payload.cash !== undefined) real = payload.cash;
+        const saldoFixado = Math.floor(Number(real) * 100) / 100;
+        if (Number.isFinite(saldoFixado) && saldoFixado >= 0) {
+          aplicarSaldoOficial(saldoFixado, `${envelope.channel || 'ws'}-priority`);
+          console.log(`[SALDO-FIX] ✅ Saldo real atualizado: R$ ${saldoFixado.toFixed(2)}`);
+        }
+      } else {
+        // Fallback: walker recursivo para payloads sem campo balance direto
+        const balance = extrairBalanceRecursivo(payload);
+        if (balance != null && Number.isFinite(balance)) {
+          aplicarSaldoOficial(balance, envelope.channel || 'walker');
+        }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     if (envelope.channel === 'evo-game') {
       processarPayloadJogo(payload);
@@ -1164,7 +1176,7 @@
           }
         } catch (_) { /* cross-origin, ignora */ }
       });
-    } catch (_) {}
+    } catch (_) { }
     return docs;
   }
 
@@ -1204,7 +1216,7 @@
       const out = [];
       try {
         root.querySelectorAll('canvas').forEach((c) => out.push(c));
-      } catch (_) {}
+      } catch (_) { }
       try {
         const all = root.querySelectorAll ? root.querySelectorAll('*') : [];
         for (const el of all) {
@@ -1212,7 +1224,7 @@
             coletarCanvasesDeep(el.shadowRoot).forEach((c) => out.push(c));
           }
         }
-      } catch (_) {}
+      } catch (_) { }
       return out;
     }
     const canvases = coletarCanvasesDeep().filter((c) => {
@@ -1264,7 +1276,7 @@
     // - PLAYER fica à esquerda, EMPATE no centro, BANKER à direita
     const SPOT_FRACTIONS = {
       player: { x: 0.22, y: 0.78 },  // JOGADOR / azul (esquerda)
-      tie:    { x: 0.50, y: 0.78 },  // EMPATE / verde (centro, mesma linha)
+      tie: { x: 0.50, y: 0.78 },  // EMPATE / verde (centro, mesma linha)
       banker: { x: 0.78, y: 0.78 }   // BANCA / vermelho (direita)
     };
     // Barra de fichas inferior — y=0.94, 9 fichas distribuídas de x=0.16 a x=0.78
@@ -1347,7 +1359,7 @@
       // Diagnóstico de visibilidade
       const style = window.getComputedStyle(el);
       const isVisible = rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
-      
+
       console.log(`[BB-CLICK] [target] ${el.tagName}#${el.id}.${el.className.split(' ').join('.')} | visible=${isVisible} | pos=${x.toFixed(0)},${y.toFixed(0)}`);
 
       if (!isVisible) {
@@ -1369,9 +1381,9 @@
 
       // Sequência completa de interação
       const sequence = [
-        'pointerover', 'mouseover', 
-        'pointerdown', 'mousedown', 
-        'pointerup', 'mouseup', 
+        'pointerover', 'mouseover',
+        'pointerdown', 'mousedown',
+        'pointerup', 'mouseup',
         'click'
       ];
 
@@ -1379,7 +1391,7 @@
 
       // Clique nativo como fallback final
       el.click();
-      
+
       return { ok: true, x, y };
     } catch (e) {
       console.warn('[BB-CLICK] Erro ao executar clique:', e);
@@ -1630,15 +1642,44 @@
     return true;
   }
 
+  // R99-A1: helper que delega ao realizarAposta.js (extensão 2) quando disponível.
+  // Retorna true se WillDadosAposta foi chamado E retornou ok; false caso contrário
+  // (incluindo quando o módulo não está carregado), pra que o caller faça fallback.
+  async function tentarRealizarApostaWDP(alvo, valor) {
+    if (typeof WillDadosAposta === 'undefined' || typeof WillDadosAposta.realizarAposta !== 'function') {
+      console.log('[BB_CLICK] WillDadosAposta indisponível — usando executarComandoClique (legacy)');
+      return false;
+    }
+    const alvoMap = { player: 'P', banker: 'B', tie: 'T' };
+    const acao = alvoMap[String(alvo).toLowerCase()] || 'P';
+    const stake = Number(valor) > 0 ? Number(valor) : 5;
+    try {
+      const res = await WillDadosAposta.realizarAposta(acao, stake);
+      const status = res?.ok ? '✅' : '❌';
+      console.log(`[BB_CLICK] WillDadosAposta(${acao}, R$${stake}) ${status} — ${res?.motivo || ''}`);
+      return !!res?.ok;
+    } catch (e) {
+      console.warn('[BB_CLICK] WillDadosAposta lançou exceção:', e?.message || e);
+      return false;
+    }
+  }
+
   async function tratarMensagemWindow(event) {
     // Comando de clique vindo do frame pai → executar no iframe.
-    // R99: aceita fallbackCoords (coords calibradas) que o top passa pra
-    // o subframe usar caso DOM falhe.
+    // R99-A1: prioridade ao realizarAposta.js (extensão 2 — DOM puro + chip exato
+    // por regex + área via [data-bet] + proteção automática 10% Tie + iframe
+    // traversal). Fallback pro executarComandoClique legacy só se WillDadosAposta
+    // não estiver carregado ou retornar falha.
     if (!IS_TOP_FRAME && event.data?.source === 'bb-click-cmd') {
       if (event.data.fallbackCoords) {
         window.__bbFallbackCoords = event.data.fallbackCoords;
       }
-      await executarComandoClique(event.data.alvo || 'player', event.data.valor || null);
+      const alvo = event.data.alvo || 'player';
+      const valor = event.data.valor || null;
+      const ok = await tentarRealizarApostaWDP(alvo, valor);
+      if (!ok) {
+        await executarComandoClique(alvo, valor);
+      }
       return;
     }
 
@@ -1664,7 +1705,7 @@
         }
         window.parent.postMessage(adjusted, '*');
       } catch (_) {
-        try { window.parent.postMessage(event.data, '*'); } catch (_) {}
+        try { window.parent.postMessage(event.data, '*'); } catch (_) { }
       }
       return;
     }
@@ -1679,7 +1720,7 @@
         return;
       }
       const r = event.data;
-      
+
       // 1. Log no Overlay
       if (r.source === 'bb-click-result') {
         const label = r.alvo === 'player' ? 'AZUL (Jogador)' : (r.alvo === 'banker' ? 'VERMELHO (Banca)' : 'EMPATE');
@@ -1723,7 +1764,7 @@
           console.warn(`[BetBoom Auto] [saldo] divergência WS=R$${saldoWS.toFixed(2)} DOM=R$${valor.toFixed(2)} → usando DOM`);
           aplicarSaldoOficial(valor, `dom:${event.data.seletor || 'evo'}`);
         }
-      } catch (_) {}
+      } catch (_) { }
       return;
     }
 
@@ -1763,7 +1804,7 @@
             const raw = localStorage.getItem('BB_INLINE_COORDS_v1');
             const cal = raw ? JSON.parse(raw) : null;
             temCal = !!(cal && cal.player && cal.banker && cal.tie && cal.chip5);
-          } catch (_) {}
+          } catch (_) { }
           CONFIG.calibracaoExiste = temCal;
           console.log(`[CANVAS-DETECT@top] check delay=${det.delay}ms canvas=${det.canvasCount} dom=${det.domClicaveis} → veredito=${veredito} temCal=${temCal}`);
 
@@ -1796,7 +1837,7 @@
         // Já estamos no topo! Descobrir qual iframe enviou para pegar o offset
         const iframes = Array.from(document.querySelectorAll('iframe'));
         const sourceFrame = iframes.find(f => f.contentWindow === sourceWindow);
-        
+
         if (sourceFrame) {
           const frameRect = sourceFrame.getBoundingClientRect();
           const globalX = frameRect.left + r.x;
@@ -2031,7 +2072,7 @@
       new Promise(resolve => setTimeout(resolve, 4000)) // Timeout de 4s para configs
     ]).finally(() => {
       Logger.info('Processo de inicialização de dependências concluído ou expirado.');
-      
+
       // 3. Inicializar Overlay (Prioridade Máxima)
       if (typeof Overlay !== 'undefined' && !overlayInicializado) {
         try {
@@ -2091,8 +2132,8 @@
 
             // Ligar adapters de calibracao
             if (typeof CalibrationLifecycleAdapter !== 'undefined'
-                && typeof RoundLifecycle !== 'undefined'
-                && typeof CalibrationLoop !== 'undefined') {
+              && typeof RoundLifecycle !== 'undefined'
+              && typeof CalibrationLoop !== 'undefined') {
               CalibrationLifecycleAdapter.attach({
                 lifecycle: RoundLifecycle,
                 calibration: CalibrationLoop,
@@ -2101,8 +2142,8 @@
               CalibrationLifecycleAdapter.start();
             }
             if (typeof CalibrationPlanAdapter !== 'undefined'
-                && typeof PlanExecutor !== 'undefined'
-                && typeof CalibrationLoop !== 'undefined') {
+              && typeof PlanExecutor !== 'undefined'
+              && typeof CalibrationLoop !== 'undefined') {
               CalibrationPlanAdapter.attach({
                 planExecutor: PlanExecutor,
                 calibration: CalibrationLoop
@@ -2110,8 +2151,8 @@
               CalibrationPlanAdapter.start();
             }
             if (typeof CalibrationReplayAdapter !== 'undefined'
-                && typeof ReplayEngine !== 'undefined'
-                && typeof CalibrationLoop !== 'undefined') {
+              && typeof ReplayEngine !== 'undefined'
+              && typeof CalibrationLoop !== 'undefined') {
               CalibrationReplayAdapter.attach({
                 replayEngine: ReplayEngine,
                 calibration: CalibrationLoop
@@ -2139,10 +2180,22 @@
   function inicializarSubframe() {
     Logger.info('Subframe em modo bridge-only.');
     console.log('[BetBoom Auto] [subframe] bridge-only ativo');
-    // O subframe já escuta comandos via tratarMensagemWindow (registrado acima)
-    // Expor BB_CLICK_CMD globalmente para teste via console
-    window.BB_CLICK = async (alvo = 'player', valor = null) => executarComandoClique(alvo, valor);
-    console.log('[BetBoom Auto] [subframe] BB_CLICK("player"/"banker"/"tie") disponível');
+    // O subframe já escuta comandos via tratarMensagemWindow (registrado acima).
+    // R99-A1: BB_CLICK global agora tenta WillDadosAposta (extensão 2) primeiro
+    // e cai pro executarComandoClique (legacy) só se falhar. Disponível pro
+    // console manual: `BB_CLICK("player", 5)` no iframe Evolution.
+    window.BB_CLICK = async (alvo = 'player', valor = null) => {
+      const ok = await tentarRealizarApostaWDP(alvo, valor);
+      if (ok) return { ok: true, via: 'WillDadosAposta' };
+      const legacy = await executarComandoClique(alvo, valor);
+      return { ok: !!legacy, via: 'legacy' };
+    };
+    console.log('[BetBoom Auto] [subframe] BB_CLICK("player"/"banker"/"tie", stake) disponível');
+    if (typeof WillDadosAposta !== 'undefined') {
+      console.log('[BetBoom Auto] [subframe] ✅ WillDadosAposta carregado (clique extensão 2)');
+    } else {
+      console.warn('[BetBoom Auto] [subframe] ⚠️ WillDadosAposta NÃO carregado — usando executor legacy');
+    }
 
     // R99.1: expõe testarSeletores TAMBÉM no subframe para diagnóstico do iframe Evolution.
     // Quando o operador roda no console com o iframe focado, vê o DOM real do jogo.
@@ -2185,7 +2238,7 @@
                 return { valor, seletor: sel, textoBruto: txt };
               }
             }
-          } catch (_) {}
+          } catch (_) { }
         }
       }
       return null;
@@ -2205,7 +2258,7 @@
           ts: Date.now()
         }, '*');
         console.log(`[BetBoom Auto] [subframe] saldo DOM: R$ ${r.valor.toFixed(2)} via "${r.seletor}" (bruto: "${r.textoBruto}")`);
-      } catch (_) {}
+      } catch (_) { }
     }, 2000);
     console.log('[BetBoom Auto] [subframe] scraper de saldo DOM ativo (2s)');
 
@@ -2223,10 +2276,10 @@
             try {
               domClicaveis += d.querySelectorAll('[data-bet], [data-betia-id^="bet-"], [data-role*="bet-spot"]').length;
               canvasCount += d.querySelectorAll('canvas').length;
-            } catch (_) {}
+            } catch (_) { }
           }
           const canvasOnly = (domClicaveis === 0 && canvasCount > 0);
-          console.log(`[CANVAS-CHECK@${delay/1000}s] DOM clicáveis=${domClicaveis} canvas=${canvasCount} → canvasOnly=${canvasOnly}`);
+          console.log(`[CANVAS-CHECK@${delay / 1000}s] DOM clicáveis=${domClicaveis} canvas=${canvasCount} → canvasOnly=${canvasOnly}`);
           // Sempre reporta; top decide se mostra banner com base no último estado.
           try {
             window.top.postMessage({
@@ -2238,7 +2291,7 @@
               ts: Date.now(),
               urlSubframe: location.href
             }, '*');
-          } catch (_) {}
+          } catch (_) { }
         } catch (e) {
           console.warn('[CANVAS-CHECK] falhou:', e?.message);
         }
@@ -2286,7 +2339,7 @@
                 pos: `${Math.round(r.left)},${Math.round(r.top)}`
               };
             }
-          } catch (_) {}
+          } catch (_) { }
         }
         if (sel === 'canvas') canvasCount = count;
         else if (sel !== '[role="button"]') totalElementosClicaveis += count;
@@ -2347,7 +2400,7 @@
       // Agora y=0.80 cai na linha 2 (área de aposta real).
       const SPOT_FRAC = {
         player: { x: 0.28, y: 0.80 },  // JOGADOR (azul, aposta)
-        tie:    { x: 0.50, y: 0.80 },  // EMPATE (verde centro, aposta)
+        tie: { x: 0.50, y: 0.80 },  // EMPATE (verde centro, aposta)
         banker: { x: 0.72, y: 0.80 }   // BANCA (vermelho, aposta)
       };
       const CHIP_INDEX = { 5: 0, 10: 1, 25: 2, 125: 3, 500: 4, 2500: 5, 6000: 6, 10000: 7, 12000: 8 };
@@ -2419,7 +2472,7 @@
         document.body.appendChild(ring);
         document.body.appendChild(tag);
         setTimeout(() => { ring.remove(); tag.remove(); }, 1600);
-      } catch (_) {}
+      } catch (_) { }
     }
 
     function dispararCDPDireto(x, y, label) {
@@ -2442,22 +2495,23 @@
     // Expor função global para disparar clique no iframe da Evolution.
     // ORDEM (R99): 1) Bridge DOM real → 2) Calibrado salvo → 3) CDP heurístico.
     // DOM via [data-bet=...] tem que ser o caminho default. CDP só pra canvas-only.
-    // ==================== BB_CLICK MELHORADO (Grok) ====================
-    window.BB_CLICK = function(cor) {
+    // ==================== BB_CLICK GROK (baseado em realizarAposta.js) ====================
+    window.BB_CLICK = async function (cor, stake = 5) {
       cor = (cor || '').toLowerCase().trim();
       const PT_TO_EN = { 'azul': 'player', 'vermelho': 'banker', 'empate': 'tie' };
       cor = PT_TO_EN[cor] || cor;
-      console.log(`[BB-CLICK] Tentando clicar em: ${cor}`);
+      const traceId = 'clk-' + Date.now();
+      console.log(`[BB-CLICK][${traceId}] Iniciando ${cor} R$${stake}`);
 
       const iframe = document.querySelector('iframe');
-      const doc = iframe ? iframe.contentDocument || iframe.contentWindow.document : document;
+      const doc = iframe ? (iframe.contentDocument || iframe.contentWindow.document) : document;
 
-      // Prioridade 1: Seletores reais da plataforma
       const selectors = [
         `[data-bet="${cor}"]`,
         `[data-action="${cor}"]`,
         `button[data-type="${cor}"]`,
-        `div[data-bet="${cor}"]`
+        `.${cor}-bet`, `.${cor}`,
+        `[data-spot="${cor}"]`
       ];
 
       for (const sel of selectors) {
@@ -2465,15 +2519,19 @@
           const el = doc.querySelector(sel);
           if (el) {
             el.scrollIntoView({ block: 'center' });
+            el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 50 + Math.random() * 100));
+            el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
             el.click();
-            console.log(`✅ [BB-CLICK] Sucesso com seletor: ${sel}`);
-            return true;
+            console.log(`✅ [BB-CLICK][${traceId}] SUCESSO com ${sel}`);
+            return { ok: true, motivo: 'data-bet', traceId };
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
-      // Fallback CDP (mantido do legado)
-      console.warn(`[BB-CLICK] Nenhum seletor encontrado. Usando fallback.`);
+      console.warn(`[BB-CLICK][${traceId}] Nenhum seletor DOM. Fallback CDP necessário.`);
       const alvoEN = cor;
 
       // Lê coords calibradas (se houver) pra passar pro subframe como fallback
@@ -2489,7 +2547,7 @@
             calCoords = { chip: chipPos, spot: spotPos, confirmar: cal.confirmar || null };
           }
         }
-      } catch (_) {}
+      } catch (_) { }
 
       // 1) BRIDGE DOM (caminho PRINCIPAL) — subframe tenta [data-bet=...] primeiro,
       //    cai pra CDP heurístico internamente se DOM falhar.
