@@ -479,46 +479,55 @@
     atualizarStatusWS();
   }
 
-  // Walker recursivo de balance — técnica adotada da extensão Will Dados Pro.
-  // Percorre payload WS em qualquer profundidade procurando chaves cujo PATH
-  // case /balance|wallet|saldo|cash/. Retorna primeiro número válido encontrado.
-  // Profundidade limitada (8) e nodes limitados (1500) pra não estourar em
-  // payloads grandes.
+  // Walker recursivo de balance — versão robusta (R99-FECHAMENTO+saldo-fix).
+  // Antes: pegava o PRIMEIRO match de /balance|wallet|saldo|cash/ → encontrava
+  // `lockedBalance: 0` antes do `balance: 15.87` e o overlay zerava o saldo.
+  // Agora: coleta TODOS os matches, descarta valores 0, penaliza sub-saldos
+  // (locked/bonus/promotional/frozen/blocked/reserved/pending) e retorna o
+  // MAIOR valor positivo de um path "limpo". Se só houver sub-saldos, ainda
+  // retorna o maior deles como último recurso.
   function extrairBalanceRecursivo(payload) {
     if (!payload || typeof payload !== 'object') return null;
     const BALANCE_PATH_RE = /balance|wallet|saldo|cash/i;
-    let found = null;
+    const PENALTY_PATH_RE = /lock|bonus|promo|frozen|block|reserved|pending|hold|fee|tax/i;
+    const candidatosLimpos = [];
+    const candidatosPenalizados = [];
     let visited = 0;
     const MAX_VISITED = 1500;
     const MAX_DEPTH = 8;
 
     function walk(value, path, depth) {
-      if (found != null || visited > MAX_VISITED || depth > MAX_DEPTH) return;
+      if (visited > MAX_VISITED || depth > MAX_DEPTH) return;
       visited += 1;
       if (value == null) return;
       if (typeof value === 'string' || typeof value === 'number') {
         if (BALANCE_PATH_RE.test(path)) {
           const n = Number(String(value).replace(/[^\d.-]/g, ''));
-          if (Number.isFinite(n) && n >= 0) found = n;
+          // ignora 0 e negativos: quase sempre são saldos secundários zerados
+          if (Number.isFinite(n) && n > 0) {
+            if (PENALTY_PATH_RE.test(path)) candidatosPenalizados.push(n);
+            else candidatosLimpos.push(n);
+          }
         }
         return;
       }
       if (Array.isArray(value)) {
-        for (let i = 0; i < value.length && found == null; i++) {
+        for (let i = 0; i < value.length; i++) {
           walk(value[i], `${path}[${i}]`, depth + 1);
         }
         return;
       }
       if (typeof value === 'object') {
         for (const k of Object.keys(value)) {
-          if (found != null) break;
           walk(value[k], path ? `${path}.${k}` : k, depth + 1);
         }
       }
     }
 
     walk(payload, '', 0);
-    return found;
+    if (candidatosLimpos.length > 0) return Math.max(...candidatosLimpos);
+    if (candidatosPenalizados.length > 0) return Math.max(...candidatosPenalizados);
+    return null;
   }
 
   function aplicarSaldoOficial(valor, source) {
@@ -1686,6 +1695,29 @@
       return;
     }
 
+    // R99-FECHAMENTO+saldo: saldo DOM enviado pelo subframe Evolution.
+    // Aplicado como REDE DE SEGURANÇA: só sobrescreve CONFIG.saldoReal se
+    // o walker WS ainda não trouxe nada (null) OU se o WS está retornando 0
+    // (típico de payloads com lockedBalance/promotionalBalance zerados).
+    // Se o WS tem valor > 0, ele ganha (fonte primária).
+    if (IS_TOP_FRAME && event.data?.source === 'bb-saldo-dom') {
+      try {
+        const valor = Number(event.data.valor);
+        if (!Number.isFinite(valor) || valor <= 0) return;
+        const saldoWS = Number(CONFIG.saldoReal);
+        const wsValido = Number.isFinite(saldoWS) && saldoWS > 0;
+        if (!wsValido) {
+          // WS sem valor (null/0) — DOM assume.
+          aplicarSaldoOficial(valor, `dom:${event.data.seletor || 'evo'}`);
+        } else if (Math.abs(saldoWS - valor) / Math.max(saldoWS, valor) > 0.3) {
+          // Divergência > 30% entre WS e DOM. Prefere DOM (UI visível ao operador).
+          console.warn(`[BetBoom Auto] [saldo] divergência WS=R$${saldoWS.toFixed(2)} DOM=R$${valor.toFixed(2)} → usando DOM`);
+          aplicarSaldoOficial(valor, `dom:${event.data.seletor || 'evo'}`);
+        }
+      } catch (_) {}
+      return;
+    }
+
     // R99.2: detector canvas-only enviado pelo subframe ao carregar.
     // Top guarda o ÚLTIMO veredito (check mais tardio é mais confiável,
     // dá tempo do canvas renderizar) e expõe via CONFIG pra overlay ler.
@@ -2108,6 +2140,65 @@
     window.testarSeletores = construirTestarSeletores();
     console.log('[BetBoom Auto] [subframe] testarSeletores() disponível no console deste iframe');
 
+    // R99-FECHAMENTO+saldo: scraper DOM do saldo dentro do iframe Evolution.
+    // Inspirado na extensão Elon (elon-the-bot-click). Roda a cada 2s lendo
+    // o saldo da UI visível, e envia pro top frame via postMessage. Funciona
+    // como rede de segurança quando o walker WS retornar 0/null (sub-saldos).
+    const SALDO_DOM_SELETORES = [
+      '[data-role="balance-value"]',
+      '[data-testid="balance-value"]',
+      '[data-automation-locator="balance-value"]',
+      '[data-qa="balance"] span',
+      '[aria-label*="Balance"]',
+      '[aria-label*="Saldo"]',
+      '.balance-value',
+      '.balance-wrapper span',
+      '.BottomBar_balance__val',
+      'div[class*="balance"] span:last-child'
+    ];
+    function extrairSaldoDOM() {
+      const docs = (typeof coletarDocsRecursivo === 'function') ? coletarDocsRecursivo() : [document];
+      for (const doc of docs) {
+        for (const sel of SALDO_DOM_SELETORES) {
+          try {
+            const el = doc.querySelector(sel);
+            if (!el) continue;
+            const txt = (el.textContent || '').trim();
+            if (!txt) continue;
+            // Normaliza "R$ 15,87" / "R$1.234,56" → 15.87 / 1234.56
+            const limpo = txt.replace(/[^\d,.\-]/g, '');
+            if (!limpo) continue;
+            const normalizado = limpo.includes(',')
+              ? limpo.replace(/\./g, '').replace(',', '.')
+              : limpo;
+            const valor = parseFloat(normalizado);
+            if (Number.isFinite(valor) && valor > 0) {
+              return { valor, seletor: sel };
+            }
+          } catch (_) {}
+        }
+      }
+      return null;
+    }
+    let ultimoSaldoDOMEnviado = null;
+    setInterval(() => {
+      const r = extrairSaldoDOM();
+      if (!r) return;
+      // Só envia se o valor mudou (evita spam) ou se ainda não enviou nada.
+      if (ultimoSaldoDOMEnviado !== null && Math.abs(ultimoSaldoDOMEnviado - r.valor) < 0.01) return;
+      ultimoSaldoDOMEnviado = r.valor;
+      try {
+        window.top.postMessage({
+          source: 'bb-saldo-dom',
+          valor: r.valor,
+          seletor: r.seletor,
+          ts: Date.now()
+        }, '*');
+        console.log(`[BetBoom Auto] [subframe] saldo DOM: R$ ${r.valor.toFixed(2)} via "${r.seletor}"`);
+      } catch (_) {}
+    }, 2000);
+    console.log('[BetBoom Auto] [subframe] scraper de saldo DOM ativo (2s)');
+
     // R99.2: detector canvas-only AO CARREGAR (não ao clicar).
     // Roda 3 vezes: 3s, 8s, 15s — Evolution Mini é lenta pra renderizar.
     // Resultado é enviado pro top via postMessage; overlay vai mostrar banner crítico.
@@ -2341,9 +2432,39 @@
     // Expor função global para disparar clique no iframe da Evolution.
     // ORDEM (R99): 1) Bridge DOM real → 2) Calibrado salvo → 3) CDP heurístico.
     // DOM via [data-bet=...] tem que ser o caminho default. CDP só pra canvas-only.
-    window.BB_CLICK = function (alvo = 'player', valor = null) {
+    // ==================== BB_CLICK MELHORADO (Grok) ====================
+    window.BB_CLICK = function(cor) {
+      cor = (cor || '').toLowerCase().trim();
       const PT_TO_EN = { 'azul': 'player', 'vermelho': 'banker', 'empate': 'tie' };
-      const alvoEN = PT_TO_EN[String(alvo).toLowerCase()] || String(alvo).toLowerCase();
+      cor = PT_TO_EN[cor] || cor;
+      console.log(`[BB-CLICK] Tentando clicar em: ${cor}`);
+
+      const iframe = document.querySelector('iframe');
+      const doc = iframe ? iframe.contentDocument || iframe.contentWindow.document : document;
+
+      // Prioridade 1: Seletores reais da plataforma
+      const selectors = [
+        `[data-bet="${cor}"]`,
+        `[data-action="${cor}"]`,
+        `button[data-type="${cor}"]`,
+        `div[data-bet="${cor}"]`
+      ];
+
+      for (const sel of selectors) {
+        try {
+          const el = doc.querySelector(sel);
+          if (el) {
+            el.scrollIntoView({ block: 'center' });
+            el.click();
+            console.log(`✅ [BB-CLICK] Sucesso com seletor: ${sel}`);
+            return true;
+          }
+        } catch (_) {}
+      }
+
+      // Fallback CDP (mantido do legado)
+      console.warn(`[BB-CLICK] Nenhum seletor encontrado. Usando fallback.`);
+      const alvoEN = cor;
 
       // Lê coords calibradas (se houver) pra passar pro subframe como fallback
       let calCoords = null;
