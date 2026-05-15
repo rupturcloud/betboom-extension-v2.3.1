@@ -534,6 +534,15 @@
     const saldo = Number(valor);
     if (!Number.isFinite(saldo) || saldo < 0) return;
 
+    // R99-FECHAMENTO+saldo: sanity cap absoluto. R$ 10M é generoso pra
+    // qualquer banca real no BetBoom. Acima disso é lixo de scraper DOM
+    // (concatenou múltiplos valores) ou de walker WS (somou totais da mesa).
+    const SALDO_CAP_ABSOLUTO = 10_000_000;
+    if (saldo > SALDO_CAP_ABSOLUTO) {
+      console.warn(`[BetBoom Auto] [saldo] 🛑 REJEITADO ${source}: R$${saldo} > cap R$${SALDO_CAP_ABSOLUTO}`);
+      return;
+    }
+
     const mudouValor = parserState.lastSaldoReal !== saldo;
     const mudouFonte = parserState.lastSaldoSource !== source;
 
@@ -2144,36 +2153,37 @@
     // Inspirado na extensão Elon (elon-the-bot-click). Roda a cada 2s lendo
     // o saldo da UI visível, e envia pro top frame via postMessage. Funciona
     // como rede de segurança quando o walker WS retornar 0/null (sub-saldos).
+    // Lista enxuta: só seletores ESPECÍFICOS pra saldo. Genéricos tipo
+    // `div[class*="balance"]` pegavam ranking de ganhadores e estatísticas
+    // (37% R$16.973,68 etc) e o normalizador esmagava em R$ 1,7 trilhão.
     const SALDO_DOM_SELETORES = [
       '[data-role="balance-value"]',
       '[data-testid="balance-value"]',
       '[data-automation-locator="balance-value"]',
-      '[data-qa="balance"] span',
-      '[aria-label*="Balance"]',
-      '[aria-label*="Saldo"]',
-      '.balance-value',
-      '.balance-wrapper span',
-      '.BottomBar_balance__val',
-      'div[class*="balance"] span:last-child'
+      '[data-qa="balance"] > span',
+      '.BottomBar_balance__val'
     ];
+    // Padrão estrito: "R$ 15,87" ou "R$1.234,56" — até 8 dígitos antes do
+    // decimal (R$ 99.999.999,99 = R$ 99M). Tudo acima é lixo concatenado.
+    const SALDO_DOM_REGEX = /^\s*R?\$?\s*([\d]{1,3}(?:\.\d{3}){0,2}|\d{1,8})(?:[,.](\d{1,2}))?\s*$/;
     function extrairSaldoDOM() {
       const docs = (typeof coletarDocsRecursivo === 'function') ? coletarDocsRecursivo() : [document];
       for (const doc of docs) {
         for (const sel of SALDO_DOM_SELETORES) {
           try {
-            const el = doc.querySelector(sel);
-            if (!el) continue;
-            const txt = (el.textContent || '').trim();
-            if (!txt) continue;
-            // Normaliza "R$ 15,87" / "R$1.234,56" → 15.87 / 1234.56
-            const limpo = txt.replace(/[^\d,.\-]/g, '');
-            if (!limpo) continue;
-            const normalizado = limpo.includes(',')
-              ? limpo.replace(/\./g, '').replace(',', '.')
-              : limpo;
-            const valor = parseFloat(normalizado);
-            if (Number.isFinite(valor) && valor > 0) {
-              return { valor, seletor: sel };
+            const els = doc.querySelectorAll(sel);
+            for (const el of els) {
+              const txt = (el.textContent || '').trim();
+              // Texto muito longo = quase certo que não é só o saldo
+              if (!txt || txt.length > 25) continue;
+              const m = txt.match(SALDO_DOM_REGEX);
+              if (!m) continue;
+              const intPart = m[1].replace(/\./g, '');
+              const decPart = m[2] || '00';
+              const valor = parseFloat(`${intPart}.${decPart}`);
+              if (Number.isFinite(valor) && valor > 0 && valor < 10_000_000) {
+                return { valor, seletor: sel, textoBruto: txt };
+              }
             }
           } catch (_) {}
         }
@@ -2194,7 +2204,7 @@
           seletor: r.seletor,
           ts: Date.now()
         }, '*');
-        console.log(`[BetBoom Auto] [subframe] saldo DOM: R$ ${r.valor.toFixed(2)} via "${r.seletor}"`);
+        console.log(`[BetBoom Auto] [subframe] saldo DOM: R$ ${r.valor.toFixed(2)} via "${r.seletor}" (bruto: "${r.textoBruto}")`);
       } catch (_) {}
     }, 2000);
     console.log('[BetBoom Auto] [subframe] scraper de saldo DOM ativo (2s)');
