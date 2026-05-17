@@ -1099,13 +1099,19 @@
     const w = refRect.width;
     const h = refRect.height;
 
-    // Frações relativas (baseadas no layout Evolution Bac Bo)
+    // Frações relativas — Bac Bo Mini (Evolution) tem 2 linhas:
+    //   y ~0.55-0.65 → texto decorativo PLAYER/BANKER + odds 1:1 (NÃO clicável)
+    //   y ~0.75-0.85 → spots reais JOGADOR/EMPATE/BANCA (clicáveis)
+    // Coords antes em y=0.62 (player/banker) e y=0.48 (tie) caíam no texto.
+    // Fix do commit 10945d7 (claude-code 15/05 13:33): todos os 3 spots na
+    // mesma linha y=0.78. Chip y=0.94, range x=0.16 a 0.78 (8 chips).
     const SPOT_FRACTIONS = {
-      player: { x: 0.30, y: 0.62 },
-      banker: { x: 0.70, y: 0.62 },
-      tie:    { x: 0.50, y: 0.48 }
+      player: { x: 0.22, y: 0.78 },  // JOGADOR / azul (esquerda)
+      tie:    { x: 0.50, y: 0.78 },  // EMPATE / verde (centro, mesma linha)
+      banker: { x: 0.78, y: 0.78 }   // BANCA / vermelho (direita)
     };
-    // Barra de fichas: 9 fichas distribuídas de x=0.08 a x=0.80, y=0.92
+    // Barra de fichas inferior — y=0.94, 9 fichas distribuídas de x=0.16 a x=0.78
+    // Layout BetBoom: R$5, 10, 25, 125, 500, 2.5K, 6K, 10K, 12K
     const CHIP_INDEX = { 5: 0, 10: 1, 25: 2, 125: 3, 500: 4, 2500: 5, 6000: 6, 10000: 7, 12000: 8 };
 
     const spotFrac = SPOT_FRACTIONS[alvo];
@@ -1113,8 +1119,8 @@
 
     const stake = Number(chipValue);
     const idx = Number.isFinite(stake) && CHIP_INDEX[stake] != null ? CHIP_INDEX[stake] : 0;
-    const chipX = 0.08 + (idx * (0.72 / 8));
-    const chipFrac = { x: chipX, y: 0.92 };
+    const chipX = 0.16 + (idx * (0.62 / 8));
+    const chipFrac = { x: chipX, y: 0.94 };
 
     return {
       chip: { x: x0 + chipFrac.x * w, y: y0 + chipFrac.y * h },
