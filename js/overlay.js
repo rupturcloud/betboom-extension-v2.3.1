@@ -907,15 +907,34 @@ const Overlay = (() => {
       el.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.7), 0 0 24px rgba(99,102,241,0.5)';
       setTimeout(() => { el.style.boxShadow = corOriginal || ''; }, 1200);
     }
-    // ▶ INICIAR — delega no bb-btn-start já existente (mesmo handler de iniciarBot)
+    // ▶ INICIAR — chama iniciarBot() direto (replicando o handler do bb-btn-start)
+    // Antes delegava via realBtn.click() — funcionava em teoria, falhava na prática.
+    // Direto é menos camada e mais previsível.
     const quickStartBtn = document.getElementById('bb-btn-quick-start');
     if (quickStartBtn) {
       quickStartBtn.addEventListener('click', () => {
-        const realBtn = document.getElementById('bb-btn-start');
-        if (realBtn && realBtn.style.display !== 'none') {
-          realBtn.click();
-        } else {
-          addLog('▶ Bot já está rodando — use ⏹ Parar pra encerrar', 'info');
+        console.log('[QUICK-START] 🟢 botão clicado | modoPassivo=' + CONFIG.modoPassivo + ' | DecisionEngine.isAtivo=' + (typeof DecisionEngine !== 'undefined' ? DecisionEngine.getState?.()?.isAtivo : '?'));
+        // Já rodando?
+        try {
+          const state = typeof DecisionEngine !== 'undefined' ? DecisionEngine.getState?.() : null;
+          if (state?.isAtivo) {
+            addLog('▶ Bot já está rodando — use ⏹ Parar pra encerrar', 'info');
+            return;
+          }
+        } catch (_) {}
+        // Modo passivo bloqueia (mesmo guard do botão original)
+        if (CONFIG.modoPassivo) {
+          addLog('⚠ Modo passivo — jogo não detectado ainda. Espere o iframe Evolution carregar.', 'error');
+          console.warn('[QUICK-START] ABORT: modoPassivo=true');
+          return;
+        }
+        // Chamada direta — sem delegação via .click()
+        try {
+          iniciarBot();
+          addLog('▶ Bot iniciado via barra rápida', 'success');
+        } catch (e) {
+          console.error('[QUICK-START] Erro ao iniciar:', e);
+          addLog(`❌ Erro ao iniciar: ${e?.message || e}`, 'error');
         }
       });
     }
