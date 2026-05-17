@@ -43,19 +43,26 @@ const Overlay = (() => {
     div.id = 'bb-auto-overlay';
     div.innerHTML = `
       <div class="bb-header" id="bb-header">
-        <span class="bb-title">🎯 BetBoom Auto v2</span>
+        <span class="bb-title">🎯 Claudinho HITL</span>
         <div class="bb-header-btns">
+          <button id="bb-btn-calibrate" class="bb-btn-sm" title="Ensina coords reais dos spots/fichas (faça 1x)" style="background:#9333ea;color:#fff;font-weight:600">🎯 CAL</button>
           <button id="bb-btn-pin" class="bb-btn-sm" title="Fixar/Desfixar Janela">📌</button>
           <button id="bb-btn-minimize" class="bb-btn-sm" title="Minimizar">−</button>
           <button id="bb-btn-close" class="bb-btn-sm" title="Fechar">×</button>
         </div>
+      </div>
+      <!-- PRD item 6: PARAR GLOBAL — trava TODAS próximas decisões instantaneamente
+           Atalho: Ctrl+Shift+K -->
+      <div id="bb-parar-bar" style="display:flex;gap:8px;align-items:center;padding:8px 10px;background:rgba(220,38,38,0.12);border-bottom:2px solid rgba(220,38,38,0.4);">
+        <span id="bb-parar-status" style="flex:1;color:#fca5a5;font-weight:800;font-size:11px;letter-spacing:0.5px;">🟢 OPERANDO — robô ativo</span>
+        <button id="bb-btn-parar-global" style="padding:8px 16px;background:linear-gradient(135deg,#dc2626,#7f1d1d);color:#fff;border:none;border-radius:6px;font-weight:900;cursor:pointer;font-size:13px;box-shadow:0 3px 10px rgba(220,38,38,0.5);" title="Trava TUDO (atalho Ctrl+Shift+K)">🛑 PARAR (Ctrl+Shift+K)</button>
       </div>
       <div class="bb-confirm-bar">
         <div class="bb-countdown-wrap">
           <button class="bb-btn-confirm" id="bb-btn-confirm" disabled>⏳ AGUARDANDO INDICAÇÃO</button>
           <div class="bb-countdown-bar" id="bb-countdown-bar"></div>
         </div>
-        <button class="bb-btn-cancel" id="bb-btn-cancel" hidden>❌ CANCELAR</button>
+        <button class="bb-btn-cancel" id="bb-btn-cancel" hidden title="Cancela esta decisão (atalho ESC ou Ctrl+Shift+C)">❌ CANCELAR (ESC)</button>
       </div>
       <div class="bb-body bb-body-layout" id="bb-body">
         <!-- COLUNA ESQUERDA: Status e Decisão -->
@@ -780,6 +787,108 @@ const Overlay = (() => {
       console.warn('[OverlayBindSkipped] bb-btn-close não encontrado');
     }
 
+    // ═══════════ PRD: Calibração + Parar Global + Atalhos ═══════════
+    // PRD item 4: botão 🎯 CAL — chama BBCalibrator.tudo() para ensinar coords reais.
+    // Resolve o caso "click no empate funciona mas player/banker não": BBCalibrator
+    // captura clique manual em cada ficha/spot e salva coords em localStorage.
+    const calibrateBtn = document.getElementById('bb-btn-calibrate');
+    if (calibrateBtn) {
+      calibrateBtn.addEventListener('click', async () => {
+        if (typeof window.BBCalibrator === 'undefined' || typeof window.BBCalibrator.tudo !== 'function') {
+          addLog('❌ BBCalibrator não disponível neste frame (use o console no iframe Evolution: BBCalibrator.tudo())', 'error');
+          console.warn('[CAL] BBCalibrator não exposto no isolated world deste frame.');
+          return;
+        }
+        addLog('🎯 Calibração iniciada — clique nos spots e fichas conforme instruções no console', 'info');
+        try {
+          await window.BBCalibrator.tudo();
+          addLog('✅ Calibração concluída — coords salvas em localStorage', 'success');
+        } catch (e) {
+          addLog(`❌ Calibração falhou: ${e?.message || e}`, 'error');
+          console.warn('[CAL] erro:', e);
+        }
+      });
+    }
+
+    // PRD item 6: botão 🛑 PARAR GLOBAL + atalhos (Ctrl+Shift+K) ⏯️
+    function refreshParadaUI() {
+      const btn = document.getElementById('bb-btn-parar-global');
+      const status = document.getElementById('bb-parar-status');
+      const bar = document.getElementById('bb-parar-bar');
+      if (!btn || !status || !bar) return;
+      if (CONFIG.paradaGlobal === true) {
+        btn.textContent = '▶ RETOMAR (Ctrl+Shift+K)';
+        btn.style.background = 'linear-gradient(135deg,#16a34a,#15803d)';
+        btn.style.boxShadow = '0 3px 10px rgba(22,163,74,0.6)';
+        status.textContent = '🛑 PARADO — nenhum clique vai disparar';
+        status.style.color = '#fde68a';
+        bar.style.background = 'rgba(251,191,36,0.18)';
+        bar.style.borderBottom = '2px solid rgba(251,191,36,0.5)';
+      } else {
+        btn.textContent = '🛑 PARAR (Ctrl+Shift+K)';
+        btn.style.background = 'linear-gradient(135deg,#dc2626,#7f1d1d)';
+        btn.style.boxShadow = '0 3px 10px rgba(220,38,38,0.5)';
+        status.textContent = '🟢 OPERANDO — robô ativo';
+        status.style.color = '#fca5a5';
+        bar.style.background = 'rgba(220,38,38,0.12)';
+        bar.style.borderBottom = '2px solid rgba(220,38,38,0.4)';
+      }
+    }
+    // Expõe pra dentro do _dispararExecucaoDecisao usar quando saldo anômalo dispara parada
+    try { window.__refreshParadaUI = refreshParadaUI; } catch (_) {}
+    function toggleParadaGlobal(origem) {
+      CONFIG.paradaGlobal = !CONFIG.paradaGlobal;
+      const status = CONFIG.paradaGlobal ? '🛑 PARADO' : '▶ RETOMADO';
+      console.log(`%c[PARAR-GLOBAL] ${status} via ${origem}`,
+        `color:${CONFIG.paradaGlobal ? '#fbbf24' : '#22c55e'};font-size:16px;font-weight:900`);
+      addLog(`${status} via ${origem}`, CONFIG.paradaGlobal ? 'warn' : 'success');
+      refreshParadaUI();
+      // Ao parar, descarta decisão em curso (countdown ativo)
+      if (CONFIG.paradaGlobal === true) {
+        try { cancelarCountdown(); } catch (_) {}
+        if (decisaoArmada && !decisaoArmada.executando) {
+          limparDecisaoArmada('PARAR GLOBAL acionado');
+        }
+      }
+    }
+    const pararBtn = document.getElementById('bb-btn-parar-global');
+    if (pararBtn) pararBtn.addEventListener('click', () => toggleParadaGlobal('botão'));
+    refreshParadaUI();
+
+    // PRD item 3 + 6: atalhos de teclado globais
+    //   ESC ou Ctrl+Shift+C → CANCELAR decisão corrente
+    //   Ctrl+Shift+K        → PARAR GLOBAL (toggle)
+    function cancelarDecisaoCorrente(origem) {
+      if (!decisaoArmada) return;
+      try { cancelarCountdown(); } catch (_) {}
+      limparDecisaoArmada(`❌ Cancelado pelo operador (${origem})`);
+      console.log(`%c[HITL] ❌ Decisão cancelada via ${origem}`, 'color:#fbbf24;font-weight:bold');
+      addLog(`❌ Cancelado pelo operador (${origem})`, 'warn');
+    }
+    window.addEventListener('keydown', (ev) => {
+      // Ctrl+Shift+K → PARAR GLOBAL
+      if (ev.ctrlKey && ev.shiftKey && (ev.code === 'KeyK' || ev.key === 'K' || ev.key === 'k')) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        toggleParadaGlobal('Ctrl+Shift+K');
+        return;
+      }
+      // Ctrl+Shift+C → CANCELAR decisão corrente
+      if (ev.ctrlKey && ev.shiftKey && (ev.code === 'KeyC' || ev.key === 'C' || ev.key === 'c')) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        cancelarDecisaoCorrente('Ctrl+Shift+C');
+        return;
+      }
+      // ESC → CANCELAR decisão corrente (apenas se há decisão armada — não engole ESC global)
+      if (ev.code === 'Escape' && decisaoArmada && !ev.repeat) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        cancelarDecisaoCorrente('ESC');
+      }
+    }, true);
+    console.log('[Claudinho] Atalhos ativos: ESC ou Ctrl+Shift+C = cancelar | Ctrl+Shift+K = parar global');
+
     const startBtn = document.getElementById('bb-btn-start');
     if (startBtn) {
       startBtn.addEventListener('click', () => {
@@ -1325,8 +1434,27 @@ const Overlay = (() => {
   // ─── Execução efetiva (chamada pelo countdown ao chegar em 0) ─────────────────
 
   function _dispararExecucaoDecisao(contexto) {
-    console.log(`[EXEC-DEBUG] _dispararExecucaoDecisao chamado | contexto=${contexto} | decisaoArmada=${!!decisaoArmada} | estado=${CONFIG.estadoRodadaAtual}`);
+    console.log(`[EXEC-DEBUG] _dispararExecucaoDecisao chamado | contexto=${contexto} | decisaoArmada=${!!decisaoArmada} | estado=${CONFIG.estadoRodadaAtual} | paradaGlobal=${CONFIG.paradaGlobal}`);
     if (!decisaoArmada) { console.log('[EXEC-DEBUG] ABORT _disparar: sem decisaoArmada'); return; }
+    // PRD item 6: PARAR GLOBAL — bloqueia TODAS as decisões automaticamente.
+    // Descarta a decisão atual SEM contar como abortada (limpa para próxima rodada).
+    if (CONFIG.paradaGlobal === true) {
+      console.log(`%c[PARAR-GLOBAL] 🛑 Decisão descartada (${decisaoArmada?.decisao?.cor || '?'} R$${decisaoArmada?.decisao?.stake || 0})`, 'color:#fbbf24;font-weight:bold');
+      addLog(`🛑 PARAR GLOBAL ativo — decisão descartada`, 'warn');
+      limparDecisaoArmada('PARAR GLOBAL ativo');
+      return;
+    }
+    // PRD item 8: anomalia de saldo (0, 2969 zumbi etc) — trava clique.
+    const saldoAtual = Number(CONFIG.saldoReal);
+    const anomalos = Array.isArray(CONFIG.saldosAnomalos) ? CONFIG.saldosAnomalos : [];
+    if (Number.isFinite(saldoAtual) && anomalos.includes(saldoAtual)) {
+      console.warn(`[SAFETY] ⚠️ Saldo anômalo R$${saldoAtual} — bloqueando clique e ativando PARAR GLOBAL`);
+      addLog(`⚠️ Saldo anômalo R$${saldoAtual} (lista de zumbis) — clique bloqueado, PARAR GLOBAL acionado`, 'error');
+      CONFIG.paradaGlobal = true;
+      if (typeof refreshParadaUI === 'function') try { refreshParadaUI(); } catch (_) {}
+      limparDecisaoArmada(`Saldo anômalo R$${saldoAtual}`);
+      return;
+    }
     // Não aborta por estado — quem decide se aceita é a casa (via DOM bypass no Executor).
     if (CONFIG.estadoRodadaAtual !== 'apostando') {
       console.log(`[EXEC-DEBUG] aviso: estado=${CONFIG.estadoRodadaAtual} (esperado: apostando). Prosseguindo — Executor vai decidir via DOM.`);
@@ -2200,6 +2328,16 @@ const Overlay = (() => {
     }
     ultimoLogKey = logKey;
 
+    // PRD item 7: persistência simples em localStorage (rolling 200 entries).
+    // Will consegue ver depois via `BBLog.exportar()` ou JSON.parse(localStorage.bb_claudinho_log)
+    try {
+      const KEY = 'bb_claudinho_log';
+      const log = JSON.parse(localStorage.getItem(KEY) || '[]');
+      log.unshift({ ts: Date.now(), type, msg });
+      if (log.length > 200) log.length = 200;
+      localStorage.setItem(KEY, JSON.stringify(log));
+    } catch (_) { /* localStorage cheio ou bloqueado — segue só com UI */ }
+
     const time = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const classe = type === 'error' ? 'bb-log-error' :
       type === 'success' ? 'bb-log-success' :
@@ -2528,3 +2666,38 @@ const Overlay = (() => {
     }
   };
 })();
+
+// PRD item 7: API simples para o Will exportar/limpar o log persistido.
+// Disponível no console como BBLog.exportar() / BBLog.ler() / BBLog.limpar()
+window.BBLog = (function () {
+  const KEY = 'bb_claudinho_log';
+  function ler() {
+    try { return JSON.parse(localStorage.getItem(KEY) || '[]'); }
+    catch (_) { return []; }
+  }
+  function limpar() {
+    localStorage.removeItem(KEY);
+    console.log('[BBLog] ✅ Histórico limpo');
+  }
+  function exportar() {
+    const entries = ler();
+    if (!entries.length) { console.log('[BBLog] (vazio)'); return null; }
+    const linhas = entries.map((e) => {
+      const d = new Date(e.ts);
+      const hora = d.toLocaleString('pt-BR');
+      return `[${hora}] [${e.type.toUpperCase()}] ${e.msg}`;
+    }).join('\n');
+    const blob = new Blob([linhas], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `claudinho-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+    console.log(`[BBLog] ✅ ${entries.length} entradas baixadas`);
+    return entries.length;
+  }
+  return { ler, limpar, exportar };
+})();
+console.log('[Claudinho] BBLog.exportar() / BBLog.ler() / BBLog.limpar() disponíveis no console');
