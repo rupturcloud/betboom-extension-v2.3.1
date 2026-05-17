@@ -61,7 +61,11 @@
     const stake = Number(decisao?.stake) || 0;
     const cor = decisao?.cor || '?';
     const roundId = decisao?.roundId || (typeof CONFIG !== 'undefined' ? CONFIG.roundIdAtual : null) || null;
-    const windowMs = Number(opts.windowMs) || 4000;
+    // Aumentado de 4000 → 10000ms (Diego, 16/05): saldo do BetBoom demora ~6-10s
+    // pra propagar via WS depois do click. Com 4s, dava falso negativo:
+    // "APOSTA NAO ENTROU" enquanto na verdade tinha entrado e o saldo só caía
+    // 6s depois. 10s cobre a propagação real observada nos logs.
+    const windowMs = Number(opts.windowMs) || 10000;
     const saldoAntes = lerSaldo();
     const tArmado = Date.now();
 

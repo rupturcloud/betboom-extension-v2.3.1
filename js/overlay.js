@@ -795,23 +795,53 @@ const Overlay = (() => {
 
     // ═══════════ PRD: Calibração + Parar Global + Atalhos ═══════════
     // PRD item 4: botão 🎯 CAL — chama BBCalibrator.tudo() para ensinar coords reais.
-    // Resolve o caso "click no empate funciona mas player/banker não": BBCalibrator
-    // captura clique manual em cada ficha/spot e salva coords em localStorage.
+    // BBCalibrator.tudo() está no MAIN world (calibrator-main.js), mas este handler
+    // roda no ISOLATED world do content script → não vê window.BBCalibrator do MAIN.
+    //
+    // Fix: injetar um <script> inline na página, que executa no MAIN world e
+    // chama BBCalibrator.tudo() lá. Comunicação de volta via postMessage / log.
     const calibrateBtn = document.getElementById('bb-btn-calibrate');
     if (calibrateBtn) {
-      calibrateBtn.addEventListener('click', async () => {
-        if (typeof window.BBCalibrator === 'undefined' || typeof window.BBCalibrator.tudo !== 'function') {
-          addLog('❌ BBCalibrator não disponível neste frame (use o console no iframe Evolution: BBCalibrator.tudo())', 'error');
-          console.warn('[CAL] BBCalibrator não exposto no isolated world deste frame.');
-          return;
-        }
-        addLog('🎯 Calibração iniciada — clique nos spots e fichas conforme instruções no console', 'info');
+      calibrateBtn.addEventListener('click', () => {
+        addLog('🎯 Calibração iniciada — siga as instruções do console (F12) e clique nos alvos', 'info');
+        console.log('[CAL] 🎯 Injetando script no MAIN world para chamar BBCalibrator.tudo()...');
         try {
-          await window.BBCalibrator.tudo();
-          addLog('✅ Calibração concluída — coords salvas em localStorage', 'success');
+          // Injeta um script inline que roda no MAIN world (page context).
+          // No MAIN world ele tem acesso a window.BBCalibrator.tudo().
+          const script = document.createElement('script');
+          script.textContent = `
+            (async () => {
+              try {
+                if (typeof window.BBCalibrator === 'undefined' || typeof window.BBCalibrator.tudo !== 'function') {
+                  console.error('[CAL] window.BBCalibrator.tudo() NÃO existe no MAIN world.');
+                  return;
+                }
+                console.log('[CAL] ▶ chamando BBCalibrator.tudo() — siga as instruções abaixo');
+                const r = await window.BBCalibrator.tudo();
+                console.log('[CAL] ✅ Calibração concluída:', r);
+                // Sinaliza pra o isolated world via postMessage
+                window.postMessage({ source: 'bb-cal-result', ok: true, data: r }, '*');
+              } catch (e) {
+                console.error('[CAL] erro:', e);
+                window.postMessage({ source: 'bb-cal-result', ok: false, error: String(e?.message || e) }, '*');
+              }
+            })();
+          `;
+          (document.head || document.documentElement).appendChild(script);
+          script.remove();
         } catch (e) {
-          addLog(`❌ Calibração falhou: ${e?.message || e}`, 'error');
-          console.warn('[CAL] erro:', e);
+          addLog(`❌ Falha ao injetar script de calibração: ${e?.message || e}`, 'error');
+          console.warn('[CAL] erro injeção:', e);
+        }
+      });
+      // Escuta a resposta vinda do MAIN world via postMessage
+      window.addEventListener('message', (ev) => {
+        if (ev.data?.source === 'bb-cal-result') {
+          if (ev.data.ok) {
+            addLog('✅ Calibração concluída — coords salvas em localStorage', 'success');
+          } else {
+            addLog(`❌ Calibração falhou: ${ev.data.error || '?'}`, 'error');
+          }
         }
       });
     }
