@@ -1451,8 +1451,26 @@ const Overlay = (() => {
       console.warn(`[SAFETY] ⚠️ Saldo anômalo R$${saldoAtual} — bloqueando clique e ativando PARAR GLOBAL`);
       addLog(`⚠️ Saldo anômalo R$${saldoAtual} (lista de zumbis) — clique bloqueado, PARAR GLOBAL acionado`, 'error');
       CONFIG.paradaGlobal = true;
-      if (typeof refreshParadaUI === 'function') try { refreshParadaUI(); } catch (_) {}
+      if (typeof window.__refreshParadaUI === 'function') try { window.__refreshParadaUI(); } catch (_) {}
       limparDecisaoArmada(`Saldo anômalo R$${saldoAtual}`);
+      return;
+    }
+    // PRD item 8a: saldo abaixo do mínimo operacional (default R$1) → conta vazia/expirada
+    const saldoMin = Number(CONFIG.saldoMinimoOperacao) || 1;
+    if (Number.isFinite(saldoAtual) && saldoAtual > 0 && saldoAtual < saldoMin) {
+      console.warn(`[SAFETY] 💸 Saldo R$${saldoAtual.toFixed(2)} < mínimo R$${saldoMin} — conta vazia. Bloqueando.`);
+      addLog(`💸 Saldo R$ ${saldoAtual.toFixed(2)} insuficiente (recarregue a conta) — clique bloqueado, PARAR GLOBAL acionado`, 'error');
+      CONFIG.paradaGlobal = true;
+      if (typeof window.__refreshParadaUI === 'function') try { window.__refreshParadaUI(); } catch (_) {}
+      limparDecisaoArmada(`Saldo R$ ${saldoAtual.toFixed(2)} insuficiente`);
+      return;
+    }
+    // PRD item 8a: saldo < stake da decisão → clique seria recusado pela casa
+    const stakeAtual = Number(decisaoArmada?.decisao?.stake) || 0;
+    if (Number.isFinite(saldoAtual) && saldoAtual > 0 && stakeAtual > 0 && saldoAtual < stakeAtual) {
+      console.warn(`[SAFETY] 💸 Saldo R$${saldoAtual.toFixed(2)} < stake R$${stakeAtual} — clique inviável`);
+      addLog(`💸 Saldo R$ ${saldoAtual.toFixed(2)} < aposta R$ ${stakeAtual} — clique cancelado (recarregue ou abaixe stake)`, 'error');
+      limparDecisaoArmada(`Saldo insuficiente para aposta de R$${stakeAtual}`);
       return;
     }
     // Não aborta por estado — quem decide se aceita é a casa (via DOM bypass no Executor).

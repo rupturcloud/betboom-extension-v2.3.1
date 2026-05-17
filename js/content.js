@@ -1355,6 +1355,15 @@
         }
       } else if (!chip || !found) {
         console.warn(`[BB-CLICK] 🛑 SEM CLIQUE: ChipDetector falhou e fallback heurístico está DESATIVADO. Use BBCalibrator.tudo() pra calibrar coords reais da mesa.`);
+        // PRD: avisa o overlay no top frame que precisa calibrar. Top frame mostra
+        // banner amarelo gigante no overlay direcionando o usuário pra apertar 🎯 CAL.
+        try {
+          window.top.postMessage({
+            source: 'bb-need-calibration',
+            ts: Date.now(),
+            motivo: 'ChipDetector falhou + fallback off'
+          }, '*');
+        } catch (_) { /* cross-origin pode falhar — não crítico */ }
       }
     }, 100); // Delay inicial para garantir que o frame processou o sinal
   }
@@ -1363,6 +1372,60 @@
     // Comando de clique vindo do frame pai → executar no iframe
     if (!IS_TOP_FRAME && event.data?.source === 'bb-click-cmd') {
       await executarComandoClique(event.data.alvo || 'player', event.data.valor || null);
+      return;
+    }
+
+    // PRD: subframe avisa que precisa calibração (ChipDetector falhou + fallback off).
+    // Top frame mostra banner amarelo gigante no overlay direcionando pra apertar 🎯 CAL.
+    if (IS_TOP_FRAME && event.data?.source === 'bb-need-calibration') {
+      try {
+        let banner = document.getElementById('bb-need-cal-banner');
+        if (!banner) {
+          banner = document.createElement('div');
+          banner.id = 'bb-need-cal-banner';
+          banner.style.cssText = `
+            position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+            z-index: 2147483646; background: linear-gradient(135deg, #f59e0b, #d97706);
+            color: #1f2937; font: 800 14px -apple-system, Segoe UI, sans-serif;
+            padding: 14px 22px; border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(245, 158, 11, 0.6), 0 0 0 3px rgba(0,0,0,0.2);
+            border: 2px solid rgba(255, 255, 255, 0.4);
+            cursor: pointer; max-width: 460px; text-align: center;
+            animation: bbNeedCalShake 0.5s ease-in-out;
+          `;
+          banner.innerHTML = `
+            ⚠️ ROBÔ NÃO CONSEGUE CLICAR<br>
+            <span style="font-size:12px;font-weight:600;">
+              Precisa calibrar a mira. Clique aqui ou aperte
+              <kbd style="background:rgba(0,0,0,0.2);padding:1px 6px;border-radius:3px;">🎯 CAL</kbd>
+              no overlay.
+            </span>
+          `;
+          if (!document.getElementById('bb-need-cal-style')) {
+            const sty = document.createElement('style');
+            sty.id = 'bb-need-cal-style';
+            sty.textContent = `
+              @keyframes bbNeedCalShake {
+                0%,100%{transform:translateX(-50%) scale(1)}
+                25%{transform:translateX(-50%) scale(1.05) rotate(-1deg)}
+                75%{transform:translateX(-50%) scale(1.05) rotate(1deg)}
+              }
+            `;
+            document.head.appendChild(sty);
+          }
+          banner.addEventListener('click', () => {
+            const calBtn = document.getElementById('bb-btn-calibrate');
+            if (calBtn) calBtn.click();
+            banner.remove();
+          });
+          document.body.appendChild(banner);
+          // Auto-some em 12s pra não ficar travado
+          setTimeout(() => { try { banner.remove(); } catch (_) {} }, 12000);
+        }
+        if (typeof Overlay !== 'undefined' && Overlay.addLog) {
+          Overlay.addLog('⚠️ Robô não consegue clicar — aperta 🎯 CAL pra calibrar a mira', 'error');
+        }
+      } catch (_) { /* falhou criar banner — não crítico */ }
       return;
     }
 

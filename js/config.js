@@ -126,8 +126,11 @@ const CONFIG = {
   // Reset automático em reload (não persistido). Toggle: botão 🛑 ou Ctrl+Shift+K.
   paradaGlobal: false,
   // PRD item 8: lista de saldos considerados "zumbi" (anômalos). Quando o saldoReal
-  // bater com algum desses valores, o executor bloqueia clique e o overlay avisa.
+  // bater EXATAMENTE com algum desses valores, o executor bloqueia clique e o overlay avisa.
   saldosAnomalos: [0, 2969],
+  // PRD item 8a: saldo abaixo deste valor (em R$) é considerado conta vazia/expirada.
+  // Bloqueia clique e aciona PARAR GLOBAL. Default R$1 (já é menor que stake mínimo R$5).
+  saldoMinimoOperacao: 1,
   estadoRodadaAtual: null,
   roundIdAtual: null,
   saldoReal: null,
