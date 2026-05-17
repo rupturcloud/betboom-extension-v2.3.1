@@ -7,8 +7,8 @@ const CONFIG = {
   // --- Stake ---
   stakeInicial: 5,          // Valor MÍNIMO REAL da mesa BetBoom (R$5 - R$25.000)
   stakeMax: 25,             // Limite seguro para fase de calibragem
-  stakeCapMultiplier: 10,   // 🛑 SAFETY: nunca apostar > stakeInicial × N (default R$50). Reduz a 1 para apostar só stakeInicial.
-  permitirFallbackHeuristico: false,  // 🛑 SAFETY: fallback heurístico desativado por default. Em mesas live-high, idx 0 pode ser ficha R$5K (não R$5). Calibrar via BBCalibrator.tudo() é o caminho seguro.
+  stakeCapMultiplier: 5,    // 🛑 SAFETY: cap absoluto = stakeInicial × 5 = R$25 max por aposta. Permite gale-2 com martingale 2x (5→10→20) sem disparo absurdo. Era 10, reduzido pra reforçar safety quando fallback heurístico voltou ligado.
+  permitirFallbackHeuristico: true,   // ♻️ RELIGADO (Diego, 16/05): mesa Bac Bo Mini é CANVAS-ONLY → ChipDetector acha 0 fichas no DOM → sem fallback, NUNCA clica. Risco mitigado pelo stakeCapMultiplier=5 (cap absoluto R$25). Em mesas live-high (idx 0 = R$5K), o cap impede disparo absurdo. CHIP_INDEX heurístico assume layout R$5/R$10/R$25/... — válido pra Bac Bo Mini de R$5 mínimo.
 
   // --- Gale (Martingale) ---
   maxGales: 2,              // Quantidade máxima de gales (0 = sem gale)
