@@ -51,6 +51,12 @@ const Overlay = (() => {
           <button id="bb-btn-close" class="bb-btn-sm" title="Fechar">×</button>
         </div>
       </div>
+      <!-- BARRA DE AÇÕES RÁPIDAS — atalhos pros 3 controles principais no topo -->
+      <div id="bb-quick-actions-bar" style="display:flex;gap:6px;align-items:stretch;padding:6px 8px;background:linear-gradient(135deg, rgba(15,52,96,0.7), rgba(20,30,60,0.7));border-bottom:1px solid rgba(99,102,241,0.3);">
+        <button id="bb-btn-quick-start" title="Liga o robô (mesmo que ▶ Iniciar)" style="flex:1;padding:8px 6px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:6px;font-weight:800;font-size:11px;cursor:pointer;letter-spacing:0.3px;box-shadow:0 2px 6px rgba(22,163,74,0.4);">▶ INICIAR</button>
+        <button id="bb-btn-quick-spots" title="Ir para Player / Tie / Banker (clique manual)" style="flex:1;padding:8px 6px;background:linear-gradient(135deg,#0284c7,#0369a1);color:#fff;border:none;border-radius:6px;font-weight:800;font-size:11px;cursor:pointer;letter-spacing:0.3px;box-shadow:0 2px 6px rgba(2,132,199,0.4);">🎰 SPOTS</button>
+        <button id="bb-btn-quick-history" title="Ir para histórico de rodadas" style="flex:1;padding:8px 6px;background:linear-gradient(135deg,#9333ea,#7e22ce);color:#fff;border:none;border-radius:6px;font-weight:800;font-size:11px;cursor:pointer;letter-spacing:0.3px;box-shadow:0 2px 6px rgba(147,51,234,0.4);">📊 HISTÓRICO</button>
+      </div>
       <!-- PRD item 6: PARAR GLOBAL — trava TODAS próximas decisões instantaneamente
            Atalho: Ctrl+Shift+K -->
       <div id="bb-parar-bar" style="display:flex;gap:8px;align-items:center;padding:8px 10px;background:rgba(220,38,38,0.12);border-bottom:2px solid rgba(220,38,38,0.4);">
@@ -888,6 +894,41 @@ const Overlay = (() => {
       }
     }, true);
     console.log('[Claudinho] Atalhos ativos: ESC ou Ctrl+Shift+C = cancelar | Ctrl+Shift+K = parar global');
+
+    // ═══════════ BARRA DE AÇÕES RÁPIDAS (▶ INICIAR | 🎰 SPOTS | 📊 HISTÓRICO) ═══════════
+    // Pequena helper pra dar feedback visual quando rolar pra uma seção.
+    function destacarSecao(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // flash de borda pra mostrar onde caiu o foco
+      const corOriginal = el.style.boxShadow;
+      el.style.transition = 'box-shadow 0.4s ease';
+      el.style.boxShadow = '0 0 0 3px rgba(99,102,241,0.7), 0 0 24px rgba(99,102,241,0.5)';
+      setTimeout(() => { el.style.boxShadow = corOriginal || ''; }, 1200);
+    }
+    // ▶ INICIAR — delega no bb-btn-start já existente (mesmo handler de iniciarBot)
+    const quickStartBtn = document.getElementById('bb-btn-quick-start');
+    if (quickStartBtn) {
+      quickStartBtn.addEventListener('click', () => {
+        const realBtn = document.getElementById('bb-btn-start');
+        if (realBtn && realBtn.style.display !== 'none') {
+          realBtn.click();
+        } else {
+          addLog('▶ Bot já está rodando — use ⏹ Parar pra encerrar', 'info');
+        }
+      });
+    }
+    // 🎰 SPOTS — rola pra seção das bancadas (Player/Tie/Banker)
+    const quickSpotsBtn = document.getElementById('bb-btn-quick-spots');
+    if (quickSpotsBtn) {
+      quickSpotsBtn.addEventListener('click', () => destacarSecao('bb-bancadas-section'));
+    }
+    // 📊 HISTÓRICO — rola pra seção do tabuleiro
+    const quickHistoryBtn = document.getElementById('bb-btn-quick-history');
+    if (quickHistoryBtn) {
+      quickHistoryBtn.addEventListener('click', () => destacarSecao('bb-history-section'));
+    }
 
     const startBtn = document.getElementById('bb-btn-start');
     if (startBtn) {
