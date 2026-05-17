@@ -1985,6 +1985,34 @@ const Overlay = (() => {
         }
         // ═════════════════════════════════════════════════════════════════
 
+        // ═══════ REGRA INVERSÃO POR FAIXA DE CONVICÇÃO (Diego, 16/05) ═══════
+        // Observação: convicções 50-79% costumam INVERTER (56% azul→vermelho,
+        // 74% também). ≥80% mantém (acerta consistentemente). Aplica DEPOIS
+        // da regra de empate (empate já virou azul, agora pode reinverter).
+        // Reversível: CONFIG.inverterFaixaConviction = false desliga em runtime.
+        // Ajustável: CONFIG.inverterConvictionRangeMin / RangeMax pra estreitar.
+        if (decisao && CONFIG.inverterFaixaConviction !== false) {
+          const conv = Number(decisao.convictionScore);
+          const minR = Number(CONFIG.inverterConvictionRangeMin) || 50;
+          const maxR = Number(CONFIG.inverterConvictionRangeMax) || 79;
+          // Só inverte azul ↔ vermelho (empate não entra aqui — já foi tratado acima)
+          const corPodeInverter = decisao.cor === 'azul' || decisao.cor === 'vermelho';
+          if (Number.isFinite(conv) && conv >= minR && conv <= maxR && corPodeInverter) {
+            const padraoNome = decisao.padrao?.nome || '?';
+            const original = decisao.cor;
+            const invertida = original === 'azul' ? 'vermelho' : 'azul';
+            console.log(`%c[INV-CONV ${conv}%] ${padraoNome}: ${original.toUpperCase()} → ${invertida.toUpperCase()} (faixa ${minR}-${maxR}% inverte)`, 'color:#f97316;font-weight:bold');
+            addLog(`🔄 ${padraoNome} conv ${conv}%: ${original} → ${invertida} (faixa ${minR}-${maxR}%)`, 'warn');
+            decisao.corOriginalFaixa = original;
+            decisao.cor = invertida;
+            if (decisao.padrao) {
+              decisao.padrao.acao_original_faixa = decisao.padrao.acao;
+              decisao.padrao.acao = invertida;
+            }
+          }
+        }
+        // ═════════════════════════════════════════════════════════════════
+
         // Atualizar padrão detectado e entrada sugerida no overlay
         if (decisao.padrao) {
           decisao.padrao.decisionModel = decisao.decisionModel || null;

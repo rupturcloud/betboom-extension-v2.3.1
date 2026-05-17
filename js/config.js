@@ -133,6 +133,16 @@ const CONFIG = {
   // Quando true, qualquer decisão de empate vira azul antes de armar.
   // Pra desligar em runtime: CONFIG.empateInverteParaAzul = false
   empateInverteParaAzul: true,
+
+  // ♻️ Regra observada (Diego, 16/05): convicções de média faixa tendem a
+  // INVERTER (56% azul→vermelho, 74% também inverte). Convicção ≥80% mantém.
+  // Quando conviction entre estes limites (inclusivo), troca azul↔vermelho.
+  // Pra desligar: CONFIG.inverterFaixaConviction = false
+  // Pra ajustar faixa: CONFIG.inverterConvictionRangeMin = 70 (só 74)
+  //                    CONFIG.inverterConvictionRangeMax = 60 (só 56)
+  inverterFaixaConviction: true,
+  inverterConvictionRangeMin: 50,
+  inverterConvictionRangeMax: 79,
   // PRD item 8a: saldo abaixo deste valor (em R$) é considerado conta vazia/expirada.
   // Bloqueia clique e aciona PARAR GLOBAL. Default R$1 (já é menor que stake mínimo R$5).
   saldoMinimoOperacao: 1,
