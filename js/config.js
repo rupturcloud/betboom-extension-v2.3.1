@@ -128,6 +128,11 @@ const CONFIG = {
   // PRD item 8: lista de saldos considerados "zumbi" (anômalos). Quando o saldoReal
   // bater EXATAMENTE com algum desses valores, o executor bloqueia clique e o overlay avisa.
   saldosAnomalos: [0, 2969],
+
+  // ♻️ Regra observada (Diego, 16/05): sugestão de EMPATE quase sempre sai AZUL.
+  // Quando true, qualquer decisão de empate vira azul antes de armar.
+  // Pra desligar em runtime: CONFIG.empateInverteParaAzul = false
+  empateInverteParaAzul: true,
   // PRD item 8a: saldo abaixo deste valor (em R$) é considerado conta vazia/expirada.
   // Bloqueia clique e aciona PARAR GLOBAL. Default R$1 (já é menor que stake mínimo R$5).
   saldoMinimoOperacao: 1,

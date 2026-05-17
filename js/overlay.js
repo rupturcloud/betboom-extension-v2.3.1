@@ -1962,6 +1962,29 @@ const Overlay = (() => {
         // (sem await, decisao vira Promise e decisao.deveApostar === undefined)
         const decisao = await DecisionEngine.decidir(cores);
 
+        // ═══════════ REGRA EMPATE → AZUL (Diego, 16/05) ═══════════
+        // Observação empírica do operador: toda vez que o decisor sugere EMPATE,
+        // a rodada sai AZUL (player). Em vez de bloquear, invertemos a sugestão
+        // antes de armar. Não mexe em patterns.js / decision.js (mantém os 18
+        // padrões intactos), só sobrescreve a `cor` final no caminho operacional.
+        // Reversível: setar CONFIG.empateInverteParaAzul = false desliga em runtime.
+        if (decisao && decisao.cor === 'empate' && CONFIG.empateInverteParaAzul !== false) {
+          const padraoNome = decisao.padrao?.nome || '?';
+          console.log(`%c[EMPATE→AZUL] ${padraoNome} sugeriu EMPATE — invertendo pra AZUL (regra empírica)`, 'color:#fbbf24;font-weight:bold');
+          addLog(`🔄 ${padraoNome}: EMPATE → AZUL (regra observada)`, 'warn');
+          decisao.corOriginal = 'empate';
+          decisao.cor = 'azul';
+          // Sincroniza com `padrao.acao` pra observability/telemetry verem o mesmo
+          if (decisao.padrao) {
+            decisao.padrao.acao_original_empate = decisao.padrao.acao;
+            decisao.padrao.acao = 'azul';
+          }
+          // Proteção empate não faz sentido quando a aposta JÁ É no empate revertido
+          decisao.protecaoEmpate = false;
+          decisao.valorProtecao = 0;
+        }
+        // ═════════════════════════════════════════════════════════════════
+
         // Atualizar padrão detectado e entrada sugerida no overlay
         if (decisao.padrao) {
           decisao.padrao.decisionModel = decisao.decisionModel || null;
