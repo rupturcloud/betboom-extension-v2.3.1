@@ -2015,24 +2015,29 @@ const Overlay = (() => {
         }
         // ═════════════════════════════════════════════════════════════════
 
-        // ═══════ REGRA INVERSÃO POR FAIXA DE CONVICÇÃO (Diego, 16/05) ═══════
-        // Observação: convicções 50-79% costumam INVERTER (56% azul→vermelho,
-        // 74% também). ≥80% mantém (acerta consistentemente). Aplica DEPOIS
-        // da regra de empate (empate já virou azul, agora pode reinverter).
-        // Reversível: CONFIG.inverterFaixaConviction = false desliga em runtime.
-        // Ajustável: CONFIG.inverterConvictionRangeMin / RangeMax pra estreitar.
+        // ═══════ REGRA INVERSÃO POR FAIXAS DE CONVICÇÃO (Diego, 16-17/05) ═══════
+        // Observações empíricas:
+        //   - 56% costuma INVERTER → faixa [50,60]
+        //   - 74% costuma INVERTER → faixa [70,78]
+        //   - 69% NÃO inverte (acerta) → fora das faixas (protegido)
+        //   - ≥80% NÃO inverte → fora das faixas
+        // CONFIG.inverterConvictionFaixas é uma lista de [min,max] inclusivos.
+        // Se conviction cair em QUALQUER faixa, inverte azul↔vermelho.
+        // Reversível: CONFIG.inverterFaixaConviction = false desliga.
         if (decisao && CONFIG.inverterFaixaConviction !== false) {
           const conv = Number(decisao.convictionScore);
-          const minR = Number(CONFIG.inverterConvictionRangeMin) || 50;
-          const maxR = Number(CONFIG.inverterConvictionRangeMax) || 79;
-          // Só inverte azul ↔ vermelho (empate não entra aqui — já foi tratado acima)
+          const faixas = Array.isArray(CONFIG.inverterConvictionFaixas)
+            ? CONFIG.inverterConvictionFaixas
+            : [[50, 60], [70, 78]];
           const corPodeInverter = decisao.cor === 'azul' || decisao.cor === 'vermelho';
-          if (Number.isFinite(conv) && conv >= minR && conv <= maxR && corPodeInverter) {
+          // Encontra a faixa em que cai (se houver)
+          const faixaMatch = faixas.find(([min, max]) => conv >= min && conv <= max);
+          if (Number.isFinite(conv) && faixaMatch && corPodeInverter) {
             const padraoNome = decisao.padrao?.nome || '?';
             const original = decisao.cor;
             const invertida = original === 'azul' ? 'vermelho' : 'azul';
-            console.log(`%c[INV-CONV ${conv}%] ${padraoNome}: ${original.toUpperCase()} → ${invertida.toUpperCase()} (faixa ${minR}-${maxR}% inverte)`, 'color:#f97316;font-weight:bold');
-            addLog(`🔄 ${padraoNome} conv ${conv}%: ${original} → ${invertida} (faixa ${minR}-${maxR}%)`, 'warn');
+            console.log(`%c[INV-CONV ${conv}%] ${padraoNome}: ${original.toUpperCase()} → ${invertida.toUpperCase()} (faixa ${faixaMatch[0]}-${faixaMatch[1]}%)`, 'color:#f97316;font-weight:bold');
+            addLog(`🔄 ${padraoNome} conv ${conv}%: ${original} → ${invertida} (faixa ${faixaMatch[0]}-${faixaMatch[1]}%)`, 'warn');
             decisao.corOriginalFaixa = original;
             decisao.cor = invertida;
             if (decisao.padrao) {
