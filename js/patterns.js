@@ -369,29 +369,10 @@ const PatternEngine = (() => {
 
       const detectados = [];
 
-      // 1. Casadinho Especial — máxima prioridade (2 empates consecutivos)
-      if (cores.length >= 3 && cores[cores.length - 1] === 'empate' && cores[cores.length - 2] === 'empate') {
-        const corAnterior = cores.slice(0, -2).reverse().find(c => c !== 'empate');
-        if (corAnterior) {
-          detectados.push({
-            nome: 'Casadinho (Will Original)',
-            acao: corAnterior,
-            confianca: 92,
-            comGale: true
-          });
-        }
-      }
-
-      // 2. Estratégias da Biblioteca (só uma vez — com o histórico completo)
-      //    Removida a análise duplicada "Sem empates" que inflava sinais artificialmente.
-      const strategiesDetectadas = analisarStrategies(cores);
-      for (const s of strategiesDetectadas) {
-        if (!detectados.find(d => d.nome === s.nome)) {
-          detectados.push(s);
-        }
-      }
-
-      // 3. Padrões Nativos (Hardcoded "Will Style") — com o histórico completo
+      // MODO ESTRITO WMSG (Diego, 17/05): apenas os 18 padroes WMSG do Will Dados Pro.
+      // Removidos: Casadinho Especial, biblioteca de estrategias (analisarStrategies),
+      // 14 WILL-XXX e 18 padroes genericos (padrao01-18). Se nenhum WMSG bater,
+      // detectados fica [] -> overlay mostra "Aguardando padrao".
       for (const fn of todosPadroes) {
         try {
           const resultado = fn(cores);
@@ -439,31 +420,7 @@ const PatternEngine = (() => {
      * Retorna a lista de nomes de todos os padrões disponíveis.
      */
     listarPadroes() {
-      if (getActiveStrategies().length > 0) {
-        return getActiveStrategies().map((strategy) => strategy.nome);
-      }
-      const wmsgNames = WMSG_PATTERNS.map(p => `${p.id}`);
-      return [
-        ...wmsgNames,
-        '1. Xadrez',
-        '2. Reversão (até G1)',
-        '3. Pós-Empate',
-        '4. Diagonal',
-        '5. Casadinho',
-        '6. Linha Devedora',
-        '7. Quebra de Padrão',
-        '8. Sequência de 2',
-        '9. Sequência de 3 (até G1)',
-        '10. Ponta / Quadrante',
-        '11. Xadrez sem Gale',
-        '12. Ping-Pong',
-        '13. Xadrez Duplo (2-2-2)',
-        '14. Tendência Dominante',
-        '15. Correção Após Empate',
-        '16. Espelho',
-        '17. Canal Horizontal',
-        '18. Reversão Diagonal'
-      ];
+      return WMSG_PATTERNS.map(p => p.id);
     },
 
     /**
