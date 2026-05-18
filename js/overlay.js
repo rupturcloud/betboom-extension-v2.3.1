@@ -2114,7 +2114,18 @@ const Overlay = (() => {
           Overlay.atualizarRaciocinio(raciocinio, 'success');
           Overlay.atualizarConfianca(decisao.confianca);
         } else {
-          Overlay.atualizarRaciocinio('Analisando padrões no histórico...', 'info');
+          // Modo estrito WMSG (Diego, 17/05): se nenhum dos 18 WMSG bater,
+          // mostra explicitamente "Aguardando padrao" e limpa qualquer
+          // sugestao anterior, pra Will saber que o robo NAO tem indicacao.
+          const padraoEl = document.getElementById('bb-padrao');
+          if (padraoEl) padraoEl.textContent = '🕓 Aguardando padrão WMSG';
+          const corEl = document.getElementById('bb-entrada-cor');
+          if (corEl) { corEl.textContent = '—'; corEl.className = 'bb-entry-color'; }
+          const galeEl = document.getElementById('bb-entrada-gale');
+          if (galeEl) galeEl.textContent = '';
+          const confEl = document.getElementById('bb-confianca');
+          if (confEl) confEl.textContent = '';
+          Overlay.atualizarRaciocinio('🕓 Aguardando algum dos 18 padrões WMSG bater no histórico…', 'info');
           Overlay.atualizarConfianca(0);
         }
 
