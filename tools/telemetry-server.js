@@ -34,6 +34,10 @@ const PORT = Number(getArg('--port') || 9876);
 const LOG_FILE = path.resolve(__dirname, getArg('--log') || 'telemetry.jsonl');
 const CMD_FILE = path.resolve(__dirname, 'commands.json');
 const BUFFER_LIMIT = 5000; // ultimos 5000 eventos em memoria
+// P0-security: token opcional pra proteger POST /command de scripts que
+// rodem no mesmo host. Default 'dev' (sessao local de desenvolvimento).
+// Em producao: export CLAUDINHO_TOKEN=$(uuidgen) antes de rodar.
+const TOKEN = process.env.CLAUDINHO_TOKEN || 'dev';
 
 function getArg(name) {
   const i = argv.indexOf(name);
@@ -173,6 +177,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && url.pathname === '/command') {
+    // P0-security: exige token quando nao for default 'dev'
+    if (TOKEN !== 'dev' && req.headers['x-token'] !== TOKEN) {
+      return send(res, 401, { ok: false, error: 'token-invalido', hint: 'use header X-Token' });
+    }
     try {
       const body = await readBody(req);
       const cmd = {
@@ -219,6 +227,7 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log(`[telemetry-server] 🛰  ouvindo em http://127.0.0.1:${PORT}`);
   console.log(`[telemetry-server] log -> ${LOG_FILE}`);
   console.log(`[telemetry-server] cmds -> ${CMD_FILE}`);
+  console.log(`[telemetry-server] token = ${TOKEN === 'dev' ? '⚠ dev (sem auth — POST /command aberto)' : '✓ via CLAUDINHO_TOKEN'}`);
   console.log(`[telemetry-server] try: curl -s localhost:${PORT}/summary`);
 });
 

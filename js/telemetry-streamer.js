@@ -133,6 +133,14 @@
         }
         break;
       case 'aposta_teste':
+        // P0-security (Diego, 18/05 code-review): nunca clica se modo
+        // observacao estiver ON. Quem ativa observacao espera ZERO clicks
+        // reais — comando remoto nao pode burlar.
+        if (typeof CONFIG !== 'undefined' && CONFIG.modoTeste === true) {
+          push({ type: 'aposta_teste_blocked', motivo: 'modo_observacao_on' });
+          console.warn(`${PREFIX} aposta_teste BLOQUEADA — modo observacao ON`);
+          break;
+        }
         if (typeof window.BBCalibrator !== 'undefined') {
           const r = await window.BBCalibrator.executarAposta(c.args?.cor || 'azul', c.args?.stake || 5);
           push({ type: 'aposta_teste_result', result: r });

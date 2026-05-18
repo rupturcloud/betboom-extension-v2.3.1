@@ -27,8 +27,10 @@
  */
 
 const PatternEngine = (() => {
-  let strategyLibrary = [];
   let lastDetectedStrategies = [];
+  // strategyLibrary removida (Diego, 18/05 code-review): modo estrito WMSG-only,
+  // biblioteca dinamica nao executa mais. setStrategyLibrary/getStrategyLibrary
+  // viraram no-op porque o loop principal ignora.
 
   // ─── UTILITÁRIOS ───
 
@@ -64,85 +66,13 @@ const PatternEngine = (() => {
     return true;
   }
 
-  function getActiveStrategies() {
-    return strategyLibrary.filter((strategy) => strategy && strategy.active !== false);
-  }
-
-  function montarResultadoEstrategia(strategy, recognizedSequence, confidence) {
-    return {
-      nome: strategy.nome,
-      acao: strategy.entradaEsperada,
-      confianca: confidence || strategy.confidence || 75,
-      comGale: Number(strategy.limiteGale || 0) > 0,
-      strategyId: strategy.id,
-      source: strategy.source || 'user',
-      strategy: strategy,
-      recognizedSequence,
-      maxGalesPermitido: Number(strategy.limiteGale || 0),
-      usarProtecaoEmpate: strategy.usarProtecaoEmpate !== false,
-      observacao: strategy.observacao || '',
-      matcherType: strategy.matcherType
-    };
-  }
-
-  function detectarPorSequenciaExata(strategy, cores) {
-    const sequence = BBStrategyUtils.normalizeSequenceBase(strategy.sequenceBase);
-    if (!sequence.length || cores.length < sequence.length) return null;
-
-    const ultimas = cores.slice(-sequence.length);
-    const match = sequence.every((cor, index) => ultimas[index] === cor);
-    if (!match) return null;
-
-    return montarResultadoEstrategia(
-      strategy,
-      BBStrategyUtils.sequenceToLabel(ultimas),
-      strategy.confidence || 82
-    );
-  }
-
-  function detectarPorDominanciaUltimas4(strategy, cores) {
-    if (cores.length < 4) return null;
-
-    const alvo = BBStrategyUtils.normalizeCor(strategy.entradaEsperada);
-    const ultimas = cores.slice(-4).filter((cor) => cor !== 'empate');
-    if (ultimas.length < 3) return null;
-
-    const count = ultimas.filter((cor) => cor === alvo).length;
-    if (count < 3) return null;
-
-    return montarResultadoEstrategia(
-      strategy,
-      BBStrategyUtils.sequenceToLabel(ultimas),
-      strategy.confidence || 76
-    );
-  }
-
-  function detectarEstrategia(strategy, cores) {
-    if (!strategy || !strategy.active) return null;
-
-    switch (strategy.matcherType) {
-      case 'dominant-last-4':
-        return detectarPorDominanciaUltimas4(strategy, cores);
-      case 'alternating-sequence':
-      case 'exact-sequence':
-      default:
-        return detectarPorSequenciaExata(strategy, cores);
-    }
-  }
-
-  function analisarStrategies(cores) {
-    const activeStrategies = getActiveStrategies();
-    if (!activeStrategies.length) return [];
-
-    const detectadas = activeStrategies
-      .map((strategy) => detectarEstrategia(strategy, cores))
-      .filter(Boolean)
-      .sort((a, b) => b.confianca - a.confianca);
-
-    lastDetectedStrategies = detectadas;
-    return detectadas;
-  }
-
+  // -----------------------------------------------------------------------
+  // CODIGO REMOVIDO (Diego, 18/05 code-review):
+  // getActiveStrategies, montarResultadoEstrategia, detectarPorSequenciaExata,
+  // detectarPorDominanciaUltimas4, detectarEstrategia, analisarStrategies.
+  // Modo estrito WMSG-only — biblioteca dinamica nao roda no decisor.
+  // Quem quiser ressuscitar precisa religar PatternEngine.analisar tambem.
+  // -----------------------------------------------------------------------
 
   // =====================================================
   // 18 PADRÕES WMSG (Will Dados Pro — Sequências Exatas)
@@ -424,69 +354,22 @@ const PatternEngine = (() => {
     },
 
     /**
-     * Loga no console todos os padrões ativos (WMSG + Dinâmicos + Nativos 2025).
+     * Loga no console os 18 WMSG ativos (modo estrito).
      */
     logPadroesAtivos() {
-      const dynamicStrats = getActiveStrategies();
-      const natives = [];
-      const nomesNativos = {
-        xadrez: 'Xadrez',
-        reversao: 'Reversão (até G1)',
-        posEmpate: 'Pós-Empate',
-        diagonal: 'Diagonal',
-        casadinho: 'Casadinho',
-        linhaDevedora: 'Linha Devedora',
-        quebrapadrao: 'Quebra de Padrão',
-        sequenciaDe2: 'Sequência de 2',
-        sequenciaDe3: 'Sequência de 3 (até G1)',
-        ponta: 'Ponta / Quadrante',
-        xadrezSemGale: 'Xadrez sem Gale',
-        pingPong: 'Ping-Pong',
-        xadrezDuplo: 'Xadrez Duplo (2-2-2)',
-        tendencia: 'Tendência Dominante',
-        correcaoEmpate: 'Correção Após Empate',
-        espelho: 'Espelho',
-        canalHorizontal: 'Canal Horizontal',
-        reversaoDiagonal: 'Reversão Diagonal'
-      };
-
-      for (const [key, nome] of Object.entries(nomesNativos)) {
-        if (CONFIG.padroesAtivos[key]) natives.push(nome);
-      }
-
-      console.log('[BetBoom Auto] === INTELIGÊNCIA ATIVA (Will Dados Pro) ===');
-
       console.log('[BetBoom Auto] === INTELIGÊNCIA ATIVA (WMSG-only) ===');
       console.log(`[BetBoom Auto]  - Padrões WMSG (Will Sequências Exatas): ${WMSG_PATTERNS.length} padrões`);
       WMSG_PATTERNS.forEach((p, i) => console.log(`[BetBoom Auto]    ${i + 1}. ${p.id} → ${p.enter}`));
-      // Padroes WILL extras e nativos REMOVIDOS (commits 2365cd0 e fe3de8f).
-      // Modo estrito: so os 18 WMSG.
-      console.log(`[BetBoom Auto] Total: ${WMSG_PATTERNS.length} estratégias operacionais (modo estrito WMSG-only).`);
+      console.log(`[BetBoom Auto] Total: ${WMSG_PATTERNS.length} estratégias operacionais (modo estrito).`);
       return [...WMSG_PATTERNS.map(p => p.id)];
     },
 
-    setStrategyLibrary(list) {
-      strategyLibrary = BBStrategyUtils.ensureStrategyLibrary(list);
-      CONFIG.strategyLibrary = strategyLibrary;
-      return strategyLibrary;
-    },
-
-    getStrategyLibrary() {
-      return [...strategyLibrary];
-    },
-
-    getStrategyStatus() {
-      return {
-        total: strategyLibrary.length,
-        ativas: getActiveStrategies().length,
-        ultimaCorresp: lastDetectedStrategies[0] || null,
-        estrategias: strategyLibrary.map((strategy) => ({
-          id: strategy.id,
-          nome: strategy.nome,
-          source: strategy.source,
-          active: strategy.active
-        }))
-      };
+    // No-op shims (Diego, 18/05): biblioteca dinamica removida. Mantidos pra
+    // nao quebrar consumidores que ainda chamam (popup.js, content.js init).
+    setStrategyLibrary() { return []; },
+    getStrategyLibrary()  { return []; },
+    getStrategyStatus()   {
+      return { total: 0, ativas: 0, ultimaCorresp: lastDetectedStrategies[0] || null, estrategias: [] };
     },
 
     getLastDetectedStrategies() {
