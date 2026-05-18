@@ -68,7 +68,7 @@ const Overlay = (() => {
       <div id="bb-autostart-bar" style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:rgba(99,102,241,0.10);border-bottom:1px solid rgba(99,102,241,0.3);font-size:11px;">
         <span id="bb-autostart-icon" style="font-size:14px;">⏳</span>
         <span id="bb-autostart-label" style="flex:1;color:#c7d2fe;font-weight:700;letter-spacing:0.3px;">Auto-start: inicializando…</span>
-        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v13-modo-observacao</span>
+        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v14-safety+guard-wmsg</span>
       </div>
       <!-- Barra OPERACIONAL: calibracao + hit-rate de click + status WMSG -->
       <div id="bb-ops-bar" style="display:flex;gap:6px;align-items:center;padding:6px 10px;background:rgba(15,23,42,0.6);border-bottom:1px solid rgba(99,102,241,0.2);font-size:10px;flex-wrap:wrap;">
@@ -77,6 +77,14 @@ const Overlay = (() => {
         <span id="bb-wmsg-badge" title="Ultimas 4 cores e match WMSG" style="flex:1;padding:3px 8px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);border-radius:4px;color:#c7d2fe;font-weight:700;text-align:center;">📊 WMSG: aguardando 4+ cores</span>
         <button id="bb-btn-cal-now" title="Calibrar mesa agora (BBCalibrator.tudo())" style="padding:3px 8px;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;border:none;border-radius:4px;font-weight:800;cursor:pointer;font-size:10px;">🎯 CAL</button>
         <button id="bb-btn-modo-teste" title="Alterna modo OBSERVACAO: bot decide mas nao clica" style="padding:3px 8px;background:linear-gradient(135deg,#475569,#334155);color:#fff;border:none;border-radius:4px;font-weight:800;cursor:pointer;font-size:10px;">🧪 OBSERVAR</button>
+      </div>
+      <!-- Barra SAFETY: P/L sessao, stop win, stop loss, banca (Diego, 18/05) -->
+      <div id="bb-safety-bar" style="display:flex;gap:6px;align-items:center;padding:6px 10px;background:rgba(15,23,42,0.5);border-bottom:1px solid rgba(34,197,94,0.2);font-size:10px;flex-wrap:wrap;">
+        <span id="bb-banca-badge" title="Banca atual" style="padding:3px 8px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.4);border-radius:4px;color:#86efac;font-weight:700;">💰 BANCA: R$ ?</span>
+        <span id="bb-pl-badge" title="Lucro/Prejuizo da sessao" style="padding:3px 8px;background:rgba(148,163,184,0.12);border:1px solid rgba(148,163,184,0.4);border-radius:4px;color:#94a3b8;font-weight:700;">📈 P/L: R$ 0,00</span>
+        <span id="bb-stopwin-badge" title="Stop Win: para sessao ao atingir esse lucro" style="padding:3px 8px;background:rgba(34,197,94,0.12);border:1px solid rgba(34,197,94,0.4);border-radius:4px;color:#86efac;font-weight:700;">🎯 STOP WIN: R$ ?</span>
+        <span id="bb-stoploss-badge" title="Stop Loss: para sessao ao atingir essa perda" style="padding:3px 8px;background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.4);border-radius:4px;color:#fca5a5;font-weight:700;">🛡 STOP LOSS: R$ ?</span>
+        <span id="bb-origem-badge" title="Origem da ultima decisao — robo so aposta com 'wmsg'" style="flex:1;padding:3px 8px;background:rgba(99,102,241,0.12);border:1px solid rgba(99,102,241,0.4);border-radius:4px;color:#c7d2fe;font-weight:700;text-align:center;">🔒 ORIGEM: aguardando</span>
       </div>
       <!-- Banner MODO OBSERVACAO — destaque quando modoTeste=true (Diego, 18/05) -->
       <div id="bb-obs-banner" style="display:none;padding:8px 10px;background:linear-gradient(135deg,rgba(168,85,247,0.25),rgba(124,58,237,0.25));border-bottom:2px solid rgba(168,85,247,0.6);font-size:12px;color:#e9d5ff;font-weight:800;text-align:center;letter-spacing:0.5px;">
@@ -2101,6 +2109,68 @@ const Overlay = (() => {
   }
 
   /**
+   * Atualiza badges de SAFETY (banca, P/L, stop win, stop loss) — Diego (18/05):
+   * "respeitar stop win e stop loss" + tudo visivel no overlay.
+   * Le DecisionEngine state + CONFIG.
+   */
+  function refreshSafetyBadges() {
+    try {
+      const state = typeof DecisionEngine !== 'undefined' && DecisionEngine.getState
+        ? DecisionEngine.getState() : {};
+      const banca = Number(state.bancaAtual || CONFIG.saldoReal || 0);
+      const pl = Number(state.lucroSessao || 0);
+      const sw = Number(CONFIG.stopWin || 0);
+      const sl = Number(CONFIG.stopLoss || 0);
+
+      const bancaEl = document.getElementById('bb-banca-badge');
+      if (bancaEl) bancaEl.textContent = `💰 BANCA: R$ ${banca.toFixed(2)}`;
+
+      const plEl = document.getElementById('bb-pl-badge');
+      if (plEl) {
+        const sinal = pl >= 0 ? '+' : '';
+        plEl.textContent = `📈 P/L: ${sinal}R$ ${pl.toFixed(2)}`;
+        if (pl > 0) {
+          plEl.style.background = 'rgba(34,197,94,0.15)';
+          plEl.style.borderColor = 'rgba(34,197,94,0.5)';
+          plEl.style.color = '#86efac';
+        } else if (pl < 0) {
+          plEl.style.background = 'rgba(239,68,68,0.15)';
+          plEl.style.borderColor = 'rgba(239,68,68,0.5)';
+          plEl.style.color = '#fca5a5';
+        }
+      }
+
+      const swEl = document.getElementById('bb-stopwin-badge');
+      if (swEl) {
+        const restante = sw - pl;
+        const atingiu = pl >= sw;
+        swEl.textContent = atingiu
+          ? `🎯 STOP WIN: ✅ ATINGIDO R$ ${sw}`
+          : `🎯 STOP WIN: R$ ${sw} (falta R$ ${Math.max(0, restante).toFixed(2)})`;
+        if (atingiu) {
+          swEl.style.background = 'rgba(34,197,94,0.3)';
+          swEl.style.color = '#22c55e';
+        }
+      }
+
+      const slEl = document.getElementById('bb-stoploss-badge');
+      if (slEl) {
+        const perdaAtual = pl < 0 ? Math.abs(pl) : 0;
+        const margem = sl - perdaAtual;
+        const atingiu = perdaAtual >= sl;
+        slEl.textContent = atingiu
+          ? `🛡 STOP LOSS: ✅ ATINGIDO R$ ${sl}`
+          : `🛡 STOP LOSS: R$ ${sl} (margem R$ ${margem.toFixed(2)})`;
+        if (atingiu) {
+          slEl.style.background = 'rgba(239,68,68,0.35)';
+          slEl.style.color = '#dc2626';
+          slEl.style.fontWeight = '900';
+        }
+      }
+    } catch (_) {}
+  }
+
+  /**
    * Sincroniza UI do MODO OBSERVACAO (Diego, 18/05).
    * Acionado por: botao manual, auto-detect saldo < stake minimo, carga inicial.
    */
@@ -2472,8 +2542,35 @@ const Overlay = (() => {
             addLog(`ERROR_DECISION: ${validacao.erros[0]}`, 'warn');
           }
 
-          console.log(`[BB-FLOW] deveApostar=${decisao.deveApostar} | modoTeste=${CONFIG.modoTeste} | estado=${CONFIG.estadoRodadaAtual} | cor=${decisao.cor}`);
+          console.log(`[BB-FLOW] deveApostar=${decisao.deveApostar} | modoTeste=${CONFIG.modoTeste} | estado=${CONFIG.estadoRodadaAtual} | cor=${decisao.cor} | source=${decisao.source || decisao.padrao?.source || '?'}`);
+
+          // GUARD ORIGEM (Diego, 18/05): "validar que so entra quando detectado
+          // padroes do Will". Source tem que comecar com 'wmsg' (wmsg, wmsg-line,
+          // wmsg-diag). Qualquer outra origem -> NAO arma, NAO clica.
+          const origemRaw = (decisao.source || decisao.padrao?.source || '').toLowerCase();
+          const origemEhWmsg = origemRaw.startsWith('wmsg');
+          const origemBadge = document.getElementById('bb-origem-badge');
+          if (origemBadge) {
+            if (origemEhWmsg) {
+              origemBadge.textContent = `🔒 ORIGEM: ✅ ${origemRaw}`;
+              origemBadge.style.background = 'rgba(34,197,94,0.15)';
+              origemBadge.style.borderColor = 'rgba(34,197,94,0.5)';
+              origemBadge.style.color = '#86efac';
+            } else {
+              origemBadge.textContent = `🔒 ORIGEM: 🚫 ${origemRaw || 'sem-padrao'} (bloqueado)`;
+              origemBadge.style.background = 'rgba(239,68,68,0.18)';
+              origemBadge.style.borderColor = 'rgba(239,68,68,0.5)';
+              origemBadge.style.color = '#fca5a5';
+            }
+          }
+
           if (decisao.deveApostar) {
+            if (!origemEhWmsg) {
+              // Bloqueio cirurgico — decisao real existe mas nao eh WMSG
+              addLog(`🚫 Decisao BLOQUEADA: source="${origemRaw}" nao eh WMSG (so 18 padroes oficiais entram)`, 'warn');
+              console.warn(`[GUARD-ORIGEM] decisao bloqueada — source=${origemRaw}, esperado wmsg*`);
+              return;
+            }
             addLog(`Rodada ${rodadaOperador}: ${decisao.padrao.nome} | ${BBStrategyUtils.getEntryLabel(decisao.cor)} | G${decisao.maxGalesPermitido} | ${CONFIG.modoTeste ? 'Simulado' : 'Aguardando clique'}`, 'info');
             if (CONFIG.modoTeste) {
               addLog(`Modo teste: ${decisao.padrao.nome} → ${decisao.cor} | G${decisao.maxGalesPermitido}`, 'warn');
@@ -2792,6 +2889,7 @@ const Overlay = (() => {
     // Badges operacionais (cal + hit-rate + WMSG): refresh em todo ciclo de UI.
     try { refreshHitRateBadge(); } catch (_) {}
     try { refreshWmsgBadge(); } catch (_) {}
+    try { refreshSafetyBadges(); } catch (_) {}
     try { autoDetectarSaldoInsuficiente(); } catch (_) {}
   }
 
