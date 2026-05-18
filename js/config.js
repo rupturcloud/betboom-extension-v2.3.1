@@ -10,6 +10,14 @@ const CONFIG = {
   stakeCapMultiplier: 5,    // 🛑 SAFETY: cap absoluto = stakeInicial × 5 = R$25 max por aposta. Permite gale-2 com martingale 2x (5→10→20) sem disparo absurdo. Era 10, reduzido pra reforçar safety quando fallback heurístico voltou ligado.
   permitirFallbackHeuristico: true,   // ♻️ RELIGADO (Diego, 16/05): mesa Bac Bo Mini é CANVAS-ONLY → ChipDetector acha 0 fichas no DOM → sem fallback, NUNCA clica. Risco mitigado pelo stakeCapMultiplier=5 (cap absoluto R$25). Em mesas live-high (idx 0 = R$5K), o cap impede disparo absurdo. CHIP_INDEX heurístico assume layout R$5/R$10/R$25/... — válido pra Bac Bo Mini de R$5 mínimo.
 
+  // ♻️ Diego (17/05): preferir UMA ficha unica e clicar varias vezes em vez de
+  // misturar denominacoes. Reduz superficie de erro (so 1 coord precisa estar
+  // perfeita), facilita debug. Pra apostar R$25 com fichaPreferida=5: 5 cliques
+  // na ficha R$5 + 5 cliques no spot. Calibracao continua salvando todas as
+  // fichas que cabem no saldo — preferida soh muda QUAL eh usada na execucao.
+  // Set null pra desligar (volta a greedy: maior ficha primeiro).
+  fichaPreferida: 5,
+
   // --- Gale (Martingale) ---
   maxGales: 2,              // Quantidade máxima de gales (0 = sem gale)
   galeMultiplier: 2,        // Multiplicador do gale

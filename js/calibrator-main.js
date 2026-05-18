@@ -236,15 +236,44 @@
    */
   function composeStake(stake, fichas, opts = {}) {
     const maxClicks = opts.maxClicks || 30;
-    const lista = (fichas && fichas.length ? fichas : fichasCalibradas())
-      .filter((v) => Number.isFinite(v) && v > 0)
-      .sort((a, b) => b - a); // maior primeiro
-    if (lista.length === 0) {
-      return { ok: false, sequencia: [], total: 0, faltam: stake, motivo: 'sem-fichas-calibradas' };
-    }
+    // Diego (17/05): se opts.somenteFicha=N, usa SO essa ficha N vezes.
+    // Default em runtime vem de CONFIG.fichaPreferida (se exposto via ponte).
+    const somenteFicha = opts.somenteFicha;
+
     if (!Number.isFinite(stake) || stake <= 0) {
       return { ok: false, sequencia: [], total: 0, faltam: 0, motivo: 'stake-invalido' };
     }
+
+    const calibradas = fichas && fichas.length ? fichas : fichasCalibradas();
+    if (calibradas.length === 0) {
+      return { ok: false, sequencia: [], total: 0, faltam: stake, motivo: 'sem-fichas-calibradas' };
+    }
+
+    // Caminho FICHA UNICA (Diego, 17/05): preferida calibrada? clica so ela.
+    if (Number.isFinite(somenteFicha) && somenteFicha > 0) {
+      if (!calibradas.includes(somenteFicha)) {
+        // Fallback: usa a menor calibrada se a preferida nao foi calibrada
+        const menor = Math.min(...calibradas);
+        return composeStake(stake, fichas, { ...opts, somenteFicha: menor, _fallbackDe: somenteFicha });
+      }
+      const ficha = somenteFicha;
+      const nClicks = Math.min(Math.floor(stake / ficha), maxClicks);
+      const sequencia = Array(nClicks).fill(ficha);
+      const total = nClicks * ficha;
+      const faltam = stake - total;
+      if (nClicks >= maxClicks && faltam > 0) {
+        return { ok: false, sequencia, total, faltam, motivo: `excedeu-${maxClicks}-cliques`, fichaUsada: ficha };
+      }
+      if (faltam > 0) {
+        return { ok: false, sequencia, total, faltam, motivo: 'stake-nao-multiplo-da-ficha-preferida', fichaUsada: ficha };
+      }
+      return { ok: true, sequencia, total, faltam: 0, fichaUsada: ficha };
+    }
+
+    // Caminho GREEDY (compatibilidade): maior ficha primeiro, mistura.
+    const lista = calibradas
+      .filter((v) => Number.isFinite(v) && v > 0)
+      .sort((a, b) => b - a);
     const sequencia = [];
     let restante = Number(stake);
     for (const ficha of lista) {
@@ -256,7 +285,6 @@
     }
     const total = sequencia.reduce((a, b) => a + b, 0);
     if (restante > 0 && sequencia.length < maxClicks) {
-      // Nao compoe exato — provavelmente stake nao eh multiplo das fichas
       return { ok: false, sequencia, total, faltam: restante, motivo: 'stake-nao-multiplo' };
     }
     if (sequencia.length >= maxClicks && restante > 0) {
@@ -289,10 +317,13 @@
     const chipDelayMs = opts.chipDelayMs || 350;
     const spotDelayMs = opts.spotDelayMs || 250;
     const clicarConfirmar = opts.clicarConfirmar !== false;
+    // Diego (17/05): por padrao usa CONFIG.fichaPreferida = 5
+    // (uma ficha so, clica varias vezes). opts.somenteFicha sobrescreve.
+    const somenteFicha = opts.somenteFicha != null ? opts.somenteFicha : 5;
 
     // Diego (17/05): BetBoom nao tem todas as denominacoes (ex: nao tem R$50).
-    // Composicao greedy: pra apostar R$50, clica 2x na ficha R$25.
-    const compose = composeStake(stake);
+    // Composicao usa a ficha preferida (default R$5) clicada N vezes.
+    const compose = composeStake(stake, null, { somenteFicha });
     if (compose.sequencia.length === 0) {
       console.warn(`${PREFIX} sem ficha calibrada. Rode BBCalibrator.tudo()`);
       return { ok: false, motivo: compose.motivo || 'sem-ficha-calibrada' };

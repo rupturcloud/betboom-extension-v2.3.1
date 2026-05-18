@@ -345,7 +345,10 @@ const Executor = (() => {
             try { window.BetConfirmationTracker.armar({ cor: decisao.cor, stake: decisao.stake, roundId: CONFIG.roundIdAtual }); } catch (_) {}
           }
           try {
-            const resCal = await window.BBCalibrator.executarAposta(decisao.cor, decisao.stake, { clicarConfirmar: true });
+            // Diego (17/05): passa CONFIG.fichaPreferida (default R$5) — robo
+            // clica varias vezes na mesma ficha em vez de misturar denominacoes.
+            const fichaPref = (typeof CONFIG !== 'undefined' && CONFIG.fichaPreferida != null) ? CONFIG.fichaPreferida : 5;
+            const resCal = await window.BBCalibrator.executarAposta(decisao.cor, decisao.stake, { clicarConfirmar: true, somenteFicha: fichaPref });
             lastExecutionMeta.statusExecucao = resCal.ok ? 'executado-calibracao' : 'falha-calibracao';
             lastExecutionMeta.roundId = CONFIG.roundIdAtual;
             lastExecutionMeta.calibratorDetail = resCal;
