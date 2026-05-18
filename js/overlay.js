@@ -109,7 +109,7 @@ const Overlay = (() => {
       <div id="bb-autostart-bar" style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:rgba(99,102,241,0.10);border-bottom:1px solid rgba(99,102,241,0.3);font-size:11px;">
         <span id="bb-autostart-icon" style="font-size:14px;">⏳</span>
         <span id="bb-autostart-label" style="flex:1;color:#c7d2fe;font-weight:700;letter-spacing:0.3px;">Auto-start: inicializando…</span>
-        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:9px;">v21-modos-overlay</span>
+        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:9px;">v22-lateral-default</span>
       </div>
       <!-- Barra OPERACIONAL: calibracao + hit-rate de click + status WMSG -->
       <div id="bb-ops-bar" style="display:flex;gap:6px;align-items:center;padding:6px 10px;background:rgba(15,23,42,0.6);border-bottom:1px solid rgba(99,102,241,0.2);font-size:10px;flex-wrap:wrap;">
@@ -3380,9 +3380,18 @@ const Overlay = (() => {
           e.stopPropagation();
           proximoModoOverlay();
         });
-        chrome.storage.local.get('bb-overlay-mode', (data) => {
+        chrome.storage.local.get(['bb-overlay-mode', 'bb-overlay-schema'], (data) => {
+          // Migracao de schema (Diego, 18/05): forca side-overlay como default
+          // mesmo pra quem ja tinha 'float' salvo do v21. Bumpa schema=2 pra
+          // nao re-migrar. Quem realmente quer flutuante muda de novo no 🎛.
+          const schemaSalvo = data && data['bb-overlay-schema'];
+          if (schemaSalvo !== 2) {
+            try { chrome.storage.local.set({ 'bb-overlay-schema': 2 }); } catch (_) {}
+            aplicarModoOverlay('side-overlay');
+            return;
+          }
           const salvo = data && data['bb-overlay-mode'];
-          aplicarModoOverlay(salvo && MODOS.includes(salvo) ? salvo : 'float');
+          aplicarModoOverlay(salvo && MODOS.includes(salvo) ? salvo : 'side-overlay');
         });
       } catch (e) {
         console.warn('[OPS-BADGES] falha no wireup:', e?.message || e);
