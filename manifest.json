@@ -96,7 +96,8 @@
         "js/debug-graph-ui.js",
         "js/overlay.js",
         "js/telemetry.js",
-        "js/content.js"
+        "js/content.js",
+        "js/debug-snapshot.js"
       ],
       "css": [
         "css/overlay.css"

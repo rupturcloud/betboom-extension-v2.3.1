@@ -1,0 +1,82 @@
+flowchart TD
+    Start([Will abre betboom.com]) --> Login{Logado?}
+    Login -->|Nao| DoLogin[Faz login] --> Login
+    Login -->|Sim| BacBo[Clica em Bac Bo Live]
+
+    BacBo --> Inject[manifest.json injeta 3 scripts]
+    Inject --> Main[injected.js MAIN world override WebSocket]
+    Inject --> Iso[content.js ISOLATED world]
+    Inject --> Cali[calibrator-main.js API console]
+
+    Main -.postMessage.-> Iso
+
+    OpenExt[Will abre popup da extensao] --> PopupUI[popup.js mostra saldo + estrategia]
+    PopupUI --> Overlay[overlay.js renderiza tabuleiro 6x26]
+
+    Iso --> WaitWS{Frame WS chegou?}
+    WaitWS -->|Nao| WaitWS
+    WaitWS -->|Sim| Parse[content.js parseia frame]
+
+    Parse --> Collect[collector.js atualiza FIFO 6x26 + signature]
+
+    Collect --> SigCheck{Signature ja vista?}
+    SigCheck -->|Sim| Skip[Ignora - idempotencia]
+    SigCheck -->|Nao| Pipeline[robo-runtime.js 7 checkpoints]
+
+    Pipeline --> CP1{1.VALIDATE_HISTORY FIFO integro?}
+    CP1 -->|Nao| Abort[Aborta rodada]
+    CP1 -->|Sim| CP2[2.TELEMETRY log contexto]
+
+    CP2 --> CP3{3.PATTERN faixa 50-60% ou 70-78%?}
+    CP3 -->|Fora| Wait[Aguarda proxima rodada]
+    CP3 -->|Dentro| CP4{4.CONTEXT banca/stack/gale OK?}
+
+    CP4 -->|Nao| Abort
+    CP4 -->|Sim| CP5[5.CONSENSUS engines votam]
+
+    CP5 --> CP6{6.CONVICTION empate?}
+    CP6 -->|Sim| Blue[Forca AZUL]
+    CP6 -->|Nao| Invert[Inverte azul-vermelho na faixa]
+    Blue --> CP7
+    Invert --> CP7
+
+    CP7{7.SAFETY cap R$5K?}
+    CP7 -->|Acima| Abort
+    CP7 -->|OK| Decision[/action: BET color: AZUL amount: R$100/]
+
+    Decision --> Exec[executor.js]
+    Exec --> Delay[Delay 300-800ms anti-bot]
+    Delay --> Chip[Seleciona ficha R$100]
+    Chip --> Click[Click sintetico y=78%]
+
+    Click --> Confirm{bet-confirmation tracker DOM e saldo OK em 10s?}
+    Confirm -->|Nao| Retry[Retry / log falha]
+    Confirm -->|Sim| Armed[Aposta armada]
+
+    Armed --> DealerWS{WS resultado chegou?}
+    DealerWS -->|Nao| DealerWS
+    DealerWS -->|Sim| Result{Resultado = AZUL?}
+
+    Result -->|Sim| Win[VITORIA]
+    Result -->|Nao| Loss[Derrota]
+
+    Win --> Toast[overlay.js toast verde +R$200 lucro]
+    Win --> UpdateBoard[Tabuleiro nova linha azul]
+    Win --> Sync[popup atualiza saldo]
+    Win --> Trigger[Mensagem de incentivo - A IMPLEMENTAR?]
+
+    Loss --> Gale{Gale ativo?}
+    Gale -->|Sim| NextRound[Proxima rodada com stake dobrado]
+    Gale -->|Nao| WaitWS
+
+    Toast --> WaitWS
+    Sync --> WaitWS
+
+    style Win fill:#90EE90
+    style Loss fill:#FFB6B6
+    style Decision fill:#FFD700
+    style Trigger fill:#FFA500
+    style CP3 fill:#87CEEB
+    style CP6 fill:#87CEEB
+    style CP7 fill:#87CEEB
+    style Confirm fill:#87CEEB
