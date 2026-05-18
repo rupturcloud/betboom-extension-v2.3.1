@@ -28,7 +28,9 @@
     { id: 'player',    label: 'Spot AZUL / PLAYER',                    required: true  },
     { id: 'banker',    label: 'Spot VERMELHO / BANKER',                required: true  },
     { id: 'tie',       label: 'Spot VERDE / TIE (opcional - ESC pula)', required: false },
-    { id: 'confirmar', label: 'Botao CONFIRMAR APOSTA (ESC se nao tiver)', required: false }
+    { id: 'confirmar', label: 'Botao CONFIRMAR APOSTA (ESC se nao tiver)', required: false },
+    // Diego (18/05): DESFAZER permite Claude cancelar aposta de teste sem custo.
+    { id: 'desfazer',  label: 'Botao DESFAZER (cancela a aposta - opcional)',   required: false }
   ];
 
   /**

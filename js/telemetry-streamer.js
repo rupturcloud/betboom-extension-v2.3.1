@@ -149,6 +149,57 @@
       case 'limpar_calibracao':
         if (typeof window.BBCalibrator !== 'undefined') window.BBCalibrator.limpar();
         break;
+      case 'cal_passo':
+        // Calibra UM slot especifico — pra Claude calibrar interativo
+        // (capturar('chip5'), depois capturar('player'), etc).
+        if (typeof window.BBCalibrator !== 'undefined') {
+          try {
+            const slot = c.args?.slot;
+            if (!slot) { push({ type: 'cal_passo_erro', motivo: 'falta-slot' }); break; }
+            const r = await window.BBCalibrator.capturar(slot);
+            push({ type: 'cal_passo_result', slot, coords: r, ok: !!r });
+          } catch (e) {
+            push({ type: 'cal_passo_erro', motivo: e?.message || String(e) });
+          }
+        }
+        break;
+      case 'desfazer':
+        // Clica no botao DESFAZER calibrado — cancela aposta de teste sem custo.
+        // Diego (18/05): "voce mesmo cancela no botao de desfazer, ai voce
+        // mesmo consegue calibrar e fazer testes".
+        if (typeof window.BBCalibrator !== 'undefined') {
+          if (!window.BBCalibrator.obter('desfazer')) {
+            push({ type: 'desfazer_erro', motivo: 'desfazer-nao-calibrado',
+              hint: "rode cal_passo com slot='desfazer' antes" });
+            break;
+          }
+          const r = await window.BBCalibrator.clicarHardware('desfazer');
+          push({ type: 'desfazer_result', ok: !!r });
+        }
+        break;
+      case 'aposta_teste_com_desfazer':
+        // Combo seguro: aposta_teste + auto-desfazer apos N ms.
+        // Diego (18/05): tem que respeitar modo observacao mesmo combo.
+        if (typeof CONFIG !== 'undefined' && CONFIG.modoTeste === true) {
+          push({ type: 'aposta_teste_blocked', motivo: 'modo_observacao_on' });
+          break;
+        }
+        if (typeof window.BBCalibrator !== 'undefined') {
+          if (!window.BBCalibrator.obter('desfazer')) {
+            push({ type: 'aposta_teste_erro', motivo: 'desfazer-nao-calibrado',
+              hint: 'sem desfazer calibrado seria aposta real — bloqueado por seguranca' });
+            break;
+          }
+          const cor = c.args?.cor || 'azul';
+          const stake = Math.max(5, Number(c.args?.stake) || 5); // minimo R$5 BetBoom
+          const delayDesfazer = Number(c.args?.delay_ms) || 800;
+          const r = await window.BBCalibrator.executarAposta(cor, stake, { clicarConfirmar: false });
+          push({ type: 'aposta_teste_armada', result: r, vai_desfazer_em_ms: delayDesfazer });
+          await new Promise((res) => setTimeout(res, delayDesfazer));
+          const undo = await window.BBCalibrator.clicarHardware('desfazer');
+          push({ type: 'aposta_teste_desfeita', undo_ok: !!undo });
+        }
+        break;
       default:
         console.warn(`${PREFIX} comando desconhecido: ${c.cmd}`);
     }

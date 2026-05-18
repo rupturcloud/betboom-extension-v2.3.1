@@ -108,7 +108,7 @@ const Overlay = (() => {
       <div id="bb-autostart-bar" style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:rgba(99,102,241,0.10);border-bottom:1px solid rgba(99,102,241,0.3);font-size:11px;">
         <span id="bb-autostart-icon" style="font-size:14px;">⏳</span>
         <span id="bb-autostart-label" style="flex:1;color:#c7d2fe;font-weight:700;letter-spacing:0.3px;">Auto-start: inicializando…</span>
-        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:9px;">v19-one-page</span>
+        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:9px;">v20-autonomo+banca-fix</span>
       </div>
       <!-- Barra OPERACIONAL: calibracao + hit-rate de click + status WMSG -->
       <div id="bb-ops-bar" style="display:flex;gap:6px;align-items:center;padding:6px 10px;background:rgba(15,23,42,0.6);border-bottom:1px solid rgba(99,102,241,0.2);font-size:10px;flex-wrap:wrap;">
@@ -2317,7 +2317,11 @@ const Overlay = (() => {
     try {
       const state = typeof DecisionEngine !== 'undefined' && DecisionEngine.getState
         ? DecisionEngine.getState() : {};
-      const banca = Number(state.bancaAtual || CONFIG.saldoReal || 0);
+      // FIX (Diego, 18/05): WS é fonte autoritativa do saldo. state.bancaAtual
+      // é só snapshot do iniciarBot — fica defasado quando Will inicia o bot com
+      // saldo X e depois deposita/saca. CONFIG.saldoReal vem dos canais WS
+      // (betboom-platform + evo-game) e atualiza em tempo real.
+      const banca = Number(CONFIG.saldoReal || state.bancaAtual || 0);
       const pl = Number(state.lucroSessao || 0);
       const sw = Number(CONFIG.stopWin || 0);
       const sl = Number(CONFIG.stopLoss || 0);

@@ -71,12 +71,37 @@ curl -s -X POST localhost:9876/command \
 
 Comandos suportados (lista completa em [tools/README.md](tools/README.md)):
 - `snapshot` — emite estado completo
-- `calibrar` — dispara `BBCalibrator.tudo()`
+- `calibrar` — dispara `BBCalibrator.tudo()` (guiado, todos slots)
+- `cal_passo` `{slot}` — calibra UM slot (chip5/chip10/.../player/banker/tie/confirmar/desfazer)
 - `modo_observacao` `{on: bool}` — toggle clique real
 - `parar` / `iniciar` — controla bot
 - `aplicar_config` `{stakeInicial, stopWin, ...}` — muda CONFIG
 - `aposta_teste` `{cor, stake}` — **bloqueado quando modo_observacao=ON**
+- `desfazer` — clica botão DESFAZER calibrado (cancela aposta sem custo)
+- `aposta_teste_com_desfazer` `{cor, stake, delay_ms}` — combo SEGURO: aposta + auto-desfaz em N ms. **Exige slot `desfazer` calibrado** (senão bloqueia por segurança)
 - `limpar_calibracao`
+
+### Modo autônomo de teste (Claude operacionaliza)
+
+Diego (18/05): "se voce agora consegue ter telemetria e observabilidade,
+entao tambem consegue operacionalizar a extensao para ela calibrar...
+voce mesmo cancela no botao de desfazer".
+
+Fluxo seguro para Claude testar coords/cliques sem custo real:
+
+1. Calibrar o `desfazer` primeiro (`cal_passo{slot:'desfazer'}` ou via UI)
+2. Usar `aposta_teste_com_desfazer{cor, stake:5, delay_ms:800}`:
+   - executarAposta(cor, R$5, {clicarConfirmar:false}) — arma sem confirmar
+   - aguarda delay_ms
+   - clica desfazer — saldo intocado
+3. Telemetria emite: `aposta_teste_armada` + `aposta_teste_desfeita`
+4. Se aposta_teste sem desfazer calibrado: bloqueia automaticamente
+
+**REGRAS DE SEGURANÇA** (não posso esquecer):
+- stake mínimo **R$ 5** (BetBoom Bac Bo Mini não aceita menor)
+- sempre usar `aposta_teste_com_desfazer` enquanto debugando coords
+- só usar `aposta_teste` direto após calibração validada + Diego autorizar
+- nunca aumentar stake além de R$5 sem confirmação explícita do Diego
 
 ### Eventos emitidos pela extensão (campo `.type`)
 
