@@ -45,6 +45,7 @@ const Overlay = (() => {
       <div class="bb-header" id="bb-header">
         <span class="bb-title">🎯 Claudinho HITL</span>
         <div class="bb-header-btns">
+          <button id="bb-btn-mode" class="bb-btn-sm" title="Alterna modo: Flutuante → Lateral (atrás) → Lateral (empurra) → Esconder" style="background:#0ea5e9;color:#fff;font-weight:600;font-size:11px;width:auto;padding:0 6px;">🎛</button>
           <button id="bb-btn-calibrate" class="bb-btn-sm" title="Ensina coords reais dos spots/fichas (faça 1x)" style="background:#9333ea;color:#fff;font-weight:600">🎯 CAL</button>
           <button id="bb-btn-pin" class="bb-btn-sm" title="Fixar/Desfixar Janela">📌</button>
           <button id="bb-btn-minimize" class="bb-btn-sm" title="Minimizar">−</button>
@@ -108,7 +109,7 @@ const Overlay = (() => {
       <div id="bb-autostart-bar" style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:rgba(99,102,241,0.10);border-bottom:1px solid rgba(99,102,241,0.3);font-size:11px;">
         <span id="bb-autostart-icon" style="font-size:14px;">⏳</span>
         <span id="bb-autostart-label" style="flex:1;color:#c7d2fe;font-weight:700;letter-spacing:0.3px;">Auto-start: inicializando…</span>
-        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:9px;">v20-autonomo+banca-fix</span>
+        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:9px;">v21-modos-overlay</span>
       </div>
       <!-- Barra OPERACIONAL: calibracao + hit-rate de click + status WMSG -->
       <div id="bb-ops-bar" style="display:flex;gap:6px;align-items:center;padding:6px 10px;background:rgba(15,23,42,0.6);border-bottom:1px solid rgba(99,102,241,0.2);font-size:10px;flex-wrap:wrap;">
@@ -2309,6 +2310,71 @@ const Overlay = (() => {
   }
 
   /**
+   * MODOS DE APRESENTACAO (Diego, 18/05).
+   * Alternaveis com 1 click no botao 🎛 do header:
+   *   float        : overlay flutuante padrao (drag/resize)
+   *   side-overlay : painel lateral fixo na esquerda, sobrepoe a mesa
+   *   side-push    : painel lateral + empurra body da BetBoom pra direita
+   *   collapsed    : recolhido na esquerda (44px) com dot pulsante;
+   *                  click no painel expande de volta pra side-overlay
+   * Persistido em chrome.storage.local 'bb-overlay-mode'.
+   */
+  const MODOS = ['float', 'side-overlay', 'side-push', 'collapsed'];
+  const MODO_LABELS = {
+    'float':        '🪟 Flutuante',
+    'side-overlay': '📌 Lateral (atrás)',
+    'side-push':    '↔ Lateral (empurra)',
+    'collapsed':    '💤 Recolhido (clique pra abrir)'
+  };
+  let _modoAtual = 'float';
+  let _ultimoModoLateral = 'side-overlay'; // pra collapsed lembrar pra onde voltar
+
+  function aplicarModoOverlay(modo) {
+    if (!MODOS.includes(modo)) modo = 'float';
+    if (modo === 'side-overlay' || modo === 'side-push') _ultimoModoLateral = modo;
+    _modoAtual = modo;
+    const cont = document.getElementById('bb-auto-overlay');
+    if (!cont) return;
+    // Remove classes de modo antigas
+    for (const m of MODOS) cont.classList.remove(`bb-mode-${m}`);
+    cont.classList.add(`bb-mode-${modo}`);
+    // Push aplica/remove padding-left no body (so quando lateral empurrando)
+    if (modo === 'side-push') document.body.classList.add('bb-push-active');
+    else document.body.classList.remove('bb-push-active');
+    // Collapsed: injeta dot inline + click handler que expande
+    let dotInline = document.getElementById('bb-presence-dot-inline');
+    if (modo === 'collapsed') {
+      if (!dotInline) {
+        dotInline = document.createElement('div');
+        dotInline.id = 'bb-presence-dot-inline';
+        dotInline.title = 'Clique pra expandir';
+        cont.appendChild(dotInline);
+      }
+      // Click em qualquer lugar do painel colapsado expande
+      cont.onclick = (e) => {
+        if (_modoAtual !== 'collapsed') return;
+        e.stopPropagation();
+        aplicarModoOverlay(_ultimoModoLateral);
+      };
+    } else {
+      cont.onclick = null;
+      if (dotInline) dotInline.remove();
+    }
+    // Atualiza tooltip do botao
+    const btn = document.getElementById('bb-btn-mode');
+    if (btn) btn.title = `Modo atual: ${MODO_LABELS[modo]} (clique pra trocar)`;
+    // Persiste
+    try { chrome.storage.local.set({ 'bb-overlay-mode': modo }); } catch (_) {}
+    try { addLog(`🎛 Modo overlay: ${MODO_LABELS[modo]}`, 'info'); } catch (_) {}
+  }
+
+  function proximoModoOverlay() {
+    const i = MODOS.indexOf(_modoAtual);
+    const proximo = MODOS[(i + 1) % MODOS.length];
+    aplicarModoOverlay(proximo);
+  }
+
+  /**
    * Atualiza badges de SAFETY (banca, P/L, stop win, stop loss) — Diego (18/05):
    * "respeitar stop win e stop loss" + tudo visivel no overlay.
    * Le DecisionEngine state + CONFIG.
@@ -3308,6 +3374,16 @@ const Overlay = (() => {
         if (qcApply) qcApply.addEventListener('click', () => aplicarQuickConfig());
         const qcSuggest = document.getElementById('bb-btn-qc-suggest');
         if (qcSuggest) qcSuggest.addEventListener('click', () => preencherSugestao());
+        // MODO OVERLAY (Diego, 18/05): botao 🎛 cycla float→side-overlay→side-push→collapsed
+        const modeBtn = document.getElementById('bb-btn-mode');
+        if (modeBtn) modeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          proximoModoOverlay();
+        });
+        chrome.storage.local.get('bb-overlay-mode', (data) => {
+          const salvo = data && data['bb-overlay-mode'];
+          aplicarModoOverlay(salvo && MODOS.includes(salvo) ? salvo : 'float');
+        });
       } catch (e) {
         console.warn('[OPS-BADGES] falha no wireup:', e?.message || e);
       }

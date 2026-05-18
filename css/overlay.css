@@ -12,6 +12,9 @@
   max-height: 96vh;
   min-width: 200px;
   min-height: 80px;
+  /* Diego (18/05): largura adaptativa pra Evolution mini + DevTools aberto.
+     Default mode aplicado via JS: float / side-overlay / side-push / hidden. */
+  --bb-panel-width: clamp(260px, 22vw, 340px);
   background: rgba(12, 18, 36, 0.94);
   backdrop-filter: blur(14px) saturate(190%);
   -webkit-backdrop-filter: blur(14px) saturate(190%);
@@ -70,6 +73,113 @@
 #bb-auto-overlay .bb-body { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
 #bb-auto-overlay .bb-body::-webkit-scrollbar { width: 5px; }
 #bb-auto-overlay .bb-body::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.4); border-radius: 3px; }
+
+/* ============================================================
+   MODOS DE APRESENTACAO (Diego, 18/05) — alternados via botao no header
+   .bb-mode-float        : overlay flutuante padrao (drag, resize)
+   .bb-mode-side-overlay : painel lateral fixo, sobrepoe a mesa
+   .bb-mode-side-push    : painel lateral fixo + empurra body.bb-push-active
+   .bb-mode-hidden       : esconde; mostra so #bb-presence-dot pulsante
+   ============================================================ */
+#bb-auto-overlay.bb-mode-side-overlay,
+#bb-auto-overlay.bb-mode-side-push {
+  top: 0 !important;
+  left: 0 !important;
+  width: var(--bb-panel-width) !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border-left: none !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  border-right: 1px solid rgba(99,102,241,0.5);
+  resize: none !important;
+  box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+}
+
+#bb-auto-overlay.bb-mode-side-overlay .bb-header,
+#bb-auto-overlay.bb-mode-side-push .bb-header {
+  cursor: default;
+}
+
+/* Push: empurra TUDO da BetBoom pra direita */
+body.bb-push-active {
+  padding-left: var(--bb-panel-width, 320px) !important;
+  transition: padding-left 0.18s ease-out;
+  box-sizing: border-box;
+}
+
+/* COLLAPSED: lateral recolhida (Diego, 18/05): "aparece e colapsa quando precisa".
+   Largura 44px, mostra so o dot pulsante. Click expande pro modo lateral. */
+#bb-auto-overlay.bb-mode-collapsed {
+  top: 0 !important;
+  left: 0 !important;
+  width: 44px !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 8px 8px 0 !important;
+  border-left: none !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  border-right: 2px solid rgba(74,222,128,0.6);
+  resize: none !important;
+  box-shadow: 4px 0 16px rgba(0,0,0,0.4);
+  overflow: hidden !important;
+  cursor: pointer;
+  background: linear-gradient(180deg, rgba(12,18,36,0.95), rgba(20,30,60,0.95)) !important;
+  transition: width 0.18s ease-out;
+}
+/* Esconde tudo dentro do container collapsed exceto o dot */
+#bb-auto-overlay.bb-mode-collapsed > * { display: none !important; }
+#bb-auto-overlay.bb-mode-collapsed > #bb-presence-dot-inline { display: flex !important; }
+
+/* Dot pulsante INLINE dentro do container collapsed */
+#bb-presence-dot-inline {
+  position: absolute !important;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #4ade80, #16a34a);
+  border: 2px solid rgba(255,255,255,0.85);
+  box-shadow: 0 0 16px rgba(74,222,128,0.7);
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 900;
+  color: #fff;
+  animation: bbPresencePulse 1.6s ease-in-out infinite;
+  pointer-events: none;
+}
+#bb-presence-dot-inline::before { content: '🎯'; }
+
+/* Setinha indicando "clique pra abrir" */
+#bb-auto-overlay.bb-mode-collapsed::after {
+  content: '⟩';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: rgba(74,222,128,0.8);
+  font-size: 20px;
+  font-weight: 900;
+  pointer-events: none;
+  animation: bbPresencePulse 1.6s ease-in-out infinite;
+}
+
+@keyframes bbPresencePulse {
+  0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(1); }
+  50%      { opacity: 1;   transform: translate(-50%, -50%) scale(1.12); }
+}
+/* Override pulse pro dot inline (animação simétrica, sem translate) */
+#bb-presence-dot-inline { animation-name: bbDotPulse; }
+@keyframes bbDotPulse {
+  0%, 100% { box-shadow: 0 0 14px rgba(74,222,128,0.55); transform: translateX(-50%) scale(1); }
+  50%      { box-shadow: 0 0 28px rgba(74,222,128,0.95); transform: translateX(-50%) scale(1.08); }
+}
 
 /* Header */
 .bb-header {
