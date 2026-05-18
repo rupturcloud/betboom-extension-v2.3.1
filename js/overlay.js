@@ -950,15 +950,19 @@ const Overlay = (() => {
     const quickStartBtn = document.getElementById('bb-btn-quick-start');
     if (quickStartBtn) {
       quickStartBtn.addEventListener('click', () => {
-        console.log('[QUICK-START] 🟢 botão clicado | modoPassivo=' + CONFIG.modoPassivo + ' | DecisionEngine.isAtivo=' + (typeof DecisionEngine !== 'undefined' ? DecisionEngine.getState?.()?.isAtivo : '?'));
-        // Já rodando?
-        try {
-          const state = typeof DecisionEngine !== 'undefined' ? DecisionEngine.getState?.() : null;
-          if (state?.isAtivo) {
-            addLog('▶ Bot já está rodando — use ⏹ Parar pra encerrar', 'info');
-            return;
+        const mode = quickStartBtn.dataset.mode || 'start';
+        console.log(`[QUICK-START] 🟢 botão clicado | mode=${mode} | modoPassivo=${CONFIG.modoPassivo} | DecisionEngine.isAtivo=${typeof DecisionEngine !== 'undefined' ? DecisionEngine.getState?.()?.isAtivo : '?'}`);
+        // MODO REINICIAR — bot ja esta rodando, faz para+inicia limpo
+        if (mode === 'restart') {
+          try {
+            reiniciarBot();
+          } catch (e) {
+            console.error('[QUICK-START] Erro ao reiniciar:', e);
+            addLog(`❌ Erro ao reiniciar: ${e?.message || e}`, 'error');
           }
-        } catch (_) {}
+          return;
+        }
+        // MODO INICIAR — bot parado, vai ligar
         // Modo passivo bloqueia (mesmo guard do botão original)
         if (CONFIG.modoPassivo) {
           addLog('⚠ Modo passivo — jogo não detectado ainda. Espere o iframe Evolution carregar.', 'error');
@@ -1941,15 +1945,19 @@ const Overlay = (() => {
     const quickStart = document.getElementById('bb-btn-quick-start');
     if (quickStart) {
       if (isAtivo) {
-        quickStart.textContent = '✓ RODANDO';
-        quickStart.disabled = true;
-        quickStart.style.background = 'linear-gradient(135deg,#475569,#334155)';
-        quickStart.style.boxShadow = 'none';
-        quickStart.style.cursor = 'not-allowed';
-        quickStart.style.opacity = '0.7';
-        quickStart.title = 'Bot já está rodando. Use 🛑 PARAR pra encerrar.';
+        // Diego (17/05): botao virou REINICIAR — acao util em vez de cinza inerte.
+        // Para + reinicia (sem setar flag de parada manual, diferente de PARAR).
+        quickStart.textContent = '🔄 REINICIAR';
+        quickStart.dataset.mode = 'restart';
+        quickStart.disabled = false;
+        quickStart.style.background = 'linear-gradient(135deg,#f59e0b,#d97706)';
+        quickStart.style.boxShadow = '0 2px 6px rgba(245,158,11,0.4)';
+        quickStart.style.cursor = 'pointer';
+        quickStart.style.opacity = '1';
+        quickStart.title = 'Reinicia o robô (para + inicia de novo, sem desligar auto-start).';
       } else {
         quickStart.textContent = '▶ INICIAR';
+        quickStart.dataset.mode = 'start';
         quickStart.disabled = false;
         quickStart.style.background = 'linear-gradient(135deg,#16a34a,#15803d)';
         quickStart.style.boxShadow = '0 2px 6px rgba(22,163,74,0.4)';
@@ -1964,6 +1972,34 @@ const Overlay = (() => {
       startBtn.style.opacity = isAtivo ? '0.5' : '1';
       startBtn.style.cursor = isAtivo ? 'not-allowed' : 'pointer';
     }
+  }
+
+  /**
+   * Reinicia o bot — para + inicia de novo, sem mexer na flag de parada manual.
+   * Util quando Will quer "comecar limpo" mid-sessao sem desligar o auto-start.
+   */
+  function reiniciarBot() {
+    addLog('🔄 Reiniciando bot…', 'info');
+    setAutoStartUI('🔄', 'Bot REINICIANDO…', '#fbbf24');
+    try {
+      // Para componentes internos sem setar bb-paradoManual=true
+      if (typeof DecisionEngine !== 'undefined' && DecisionEngine.parar) DecisionEngine.parar();
+      if (typeof Collector !== 'undefined' && Collector.parar) Collector.parar();
+      if (updateInterval) { clearInterval(updateInterval); updateInterval = null; }
+    } catch (e) {
+      console.warn('[REINICIAR] erro ao parar:', e?.message || e);
+    }
+    // Pequeno delay pra estado interno assentar antes do start
+    setTimeout(() => {
+      try {
+        iniciarBot();
+        addLog('✅ Bot reiniciado.', 'success');
+      } catch (e) {
+        console.error('[REINICIAR] erro ao iniciar:', e);
+        addLog(`❌ Reiniciar falhou: ${e?.message || e}`, 'error');
+        setAutoStartUI('❌', `Reiniciar falhou: ${e?.message || e}`, '#f87171');
+      }
+    }, 250);
   }
 
   function tentarAutoStart() {
