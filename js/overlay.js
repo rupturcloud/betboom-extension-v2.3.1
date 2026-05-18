@@ -51,6 +51,28 @@ const Overlay = (() => {
           <button id="bb-btn-close" class="bb-btn-sm" title="Fechar">×</button>
         </div>
       </div>
+      <!-- BARRA DE CONTROLES RAPIDOS — Diego (18/05): stake, protecao, stop win,
+           stop loss precisam estar no topo, sempre visiveis e editaveis.
+           Sao "liberadores/bloqueadores" da extensao, precisam ter coerencia
+           com a banca. Botao SUGERIR aplica proporcoes recomendadas. -->
+      <div id="bb-quick-config-bar" style="display:flex;gap:4px;align-items:center;padding:6px 8px;background:linear-gradient(135deg,rgba(30,41,59,0.85),rgba(15,23,42,0.85));border-bottom:1px solid rgba(99,102,241,0.3);font-size:10px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:3px;color:#cbd5e1;font-weight:700;">💵 STAKE
+          <input id="bb-qc-stake" type="number" min="1" step="1" value="5" style="width:50px;padding:3px 5px;background:rgba(15,23,42,0.8);color:#fff;border:1px solid rgba(99,102,241,0.4);border-radius:3px;font-weight:800;font-size:11px;text-align:right;">
+        </label>
+        <label style="display:flex;align-items:center;gap:3px;color:#cbd5e1;font-weight:700;" title="Protege empate apostando valor X no empate junto da entrada">
+          <input id="bb-qc-protegerempate" type="checkbox" style="margin:0;cursor:pointer;"> 🛡 PROT
+          <input id="bb-qc-protvalor" type="number" min="0" step="1" value="0" style="width:40px;padding:3px 5px;background:rgba(15,23,42,0.8);color:#fff;border:1px solid rgba(99,102,241,0.4);border-radius:3px;font-weight:800;font-size:11px;text-align:right;">
+        </label>
+        <label style="display:flex;align-items:center;gap:3px;color:#86efac;font-weight:700;" title="Para sessao ao atingir esse lucro">🎯 SW
+          <input id="bb-qc-stopwin" type="number" min="1" step="1" value="1000" style="width:60px;padding:3px 5px;background:rgba(15,23,42,0.8);color:#86efac;border:1px solid rgba(34,197,94,0.4);border-radius:3px;font-weight:800;font-size:11px;text-align:right;">
+        </label>
+        <label style="display:flex;align-items:center;gap:3px;color:#fca5a5;font-weight:700;" title="Para sessao ao atingir essa perda">🛡 SL
+          <input id="bb-qc-stoploss" type="number" min="1" step="1" value="500" style="width:60px;padding:3px 5px;background:rgba(15,23,42,0.8);color:#fca5a5;border:1px solid rgba(239,68,68,0.4);border-radius:3px;font-weight:800;font-size:11px;text-align:right;">
+        </label>
+        <button id="bb-btn-qc-apply" title="Aplica os valores ao bot" style="padding:4px 8px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:3px;font-weight:800;cursor:pointer;font-size:10px;">✅ APLICAR</button>
+        <button id="bb-btn-qc-suggest" title="Sugere valores proporcionais à banca atual (SW=20% banca, SL=30% banca)" style="padding:4px 8px;background:linear-gradient(135deg,#a855f7,#7c3aed);color:#fff;border:none;border-radius:3px;font-weight:800;cursor:pointer;font-size:10px;">💡 SUGERIR</button>
+        <span id="bb-qc-status" style="margin-left:auto;color:#94a3b8;font-size:9px;font-style:italic;">aguardando…</span>
+      </div>
       <!-- BARRA DE AÇÕES RÁPIDAS — atalhos pros 3 controles principais no topo -->
       <div id="bb-quick-actions-bar" style="display:flex;gap:6px;align-items:stretch;padding:6px 8px;background:linear-gradient(135deg, rgba(15,52,96,0.7), rgba(20,30,60,0.7));border-bottom:1px solid rgba(99,102,241,0.3);">
         <button id="bb-btn-quick-start" title="Liga o robô (mesmo que ▶ Iniciar)" style="flex:1;padding:8px 6px;background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;border:none;border-radius:6px;font-weight:800;font-size:11px;cursor:pointer;letter-spacing:0.3px;box-shadow:0 2px 6px rgba(22,163,74,0.4);">▶ INICIAR</button>
@@ -68,7 +90,7 @@ const Overlay = (() => {
       <div id="bb-autostart-bar" style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:rgba(99,102,241,0.10);border-bottom:1px solid rgba(99,102,241,0.3);font-size:11px;">
         <span id="bb-autostart-icon" style="font-size:14px;">⏳</span>
         <span id="bb-autostart-label" style="flex:1;color:#c7d2fe;font-weight:700;letter-spacing:0.3px;">Auto-start: inicializando…</span>
-        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v14-safety+guard-wmsg</span>
+        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v15-quick-config</span>
       </div>
       <!-- Barra OPERACIONAL: calibracao + hit-rate de click + status WMSG -->
       <div id="bb-ops-bar" style="display:flex;gap:6px;align-items:center;padding:6px 10px;background:rgba(15,23,42,0.6);border-bottom:1px solid rgba(99,102,241,0.2);font-size:10px;flex-wrap:wrap;">
@@ -2109,6 +2131,156 @@ const Overlay = (() => {
   }
 
   /**
+   * Sugere stake/protecao/stop win/stop loss proporcionais a banca (Diego, 18/05).
+   * Banca pequena ou grande precisam de valores diferentes — fixo nao funciona.
+   * Regras:
+   *   - stake = max(1, banca * 0.5%)   (ex: R$15 -> R$1 / R$100 -> R$1 / R$1000 -> R$5)
+   *     mas respeita stakeInicial minimo da mesa (R$5 BetBoom Bac Bo Mini)
+   *   - protecao = stake * 0.5         (50% do stake no empate)
+   *   - stopWin = banca * 20%
+   *   - stopLoss = banca * 30%         (perdoa mais perda pra ter mais espaco)
+   */
+  function sugerirValoresPorBanca() {
+    const banca = Number(CONFIG.saldoReal || 0);
+    if (!Number.isFinite(banca) || banca <= 0) {
+      return { stake: 5, prot: 0, sw: 1000, sl: 500, motivo: 'sem-banca' };
+    }
+    const stakeMinMesa = 5; // BetBoom Bac Bo Mini = R$5
+    const stakeBruto = Math.max(stakeMinMesa, Math.ceil(banca * 0.005));
+    // Arredondar pra cima ate proxima ficha calibravel comum (5, 10, 25)
+    const stake = stakeBruto <= 5 ? 5 : stakeBruto <= 10 ? 10 : stakeBruto <= 25 ? 25 : Math.ceil(stakeBruto / 25) * 25;
+    const prot = Math.max(0, Math.floor(stake * 0.5));
+    const sw = Math.max(stake, Math.ceil(banca * 0.20));
+    const sl = Math.max(stake * 2, Math.ceil(banca * 0.30));
+    return { stake, prot, sw, sl, motivo: `banca R$ ${banca.toFixed(2)}` };
+  }
+
+  /**
+   * Le os 4 inputs do topo e aplica em CONFIG + persiste em chrome.storage.
+   * Diego (18/05): controles tem que liberar/bloquear o robo na hora.
+   */
+  function aplicarQuickConfig() {
+    const stake = Number(document.getElementById('bb-qc-stake')?.value || CONFIG.stakeInicial);
+    const protCheck = document.getElementById('bb-qc-protegerempate')?.checked === true;
+    const protValor = Number(document.getElementById('bb-qc-protvalor')?.value || 0);
+    const sw = Number(document.getElementById('bb-qc-stopwin')?.value || CONFIG.stopWin);
+    const sl = Number(document.getElementById('bb-qc-stoploss')?.value || CONFIG.stopLoss);
+
+    if (!Number.isFinite(stake) || stake < 1) {
+      setQuickConfigStatus('❌ stake invalido (>=1)', '#fca5a5');
+      return false;
+    }
+    if (!Number.isFinite(sw) || sw < 1) {
+      setQuickConfigStatus('❌ stop win invalido (>=1)', '#fca5a5');
+      return false;
+    }
+    if (!Number.isFinite(sl) || sl < 1) {
+      setQuickConfigStatus('❌ stop loss invalido (>=1)', '#fca5a5');
+      return false;
+    }
+
+    CONFIG.stakeInicial = stake;
+    CONFIG.protegerEmpate = protCheck;
+    CONFIG.valorProtecaoEmpate = protCheck ? Math.max(1, protValor) : 0;
+    CONFIG.stopWin = sw;
+    CONFIG.stopLoss = sl;
+
+    // Persiste em chrome.storage pra sobreviver a reload
+    try {
+      chrome.storage.local.get('config', (data) => {
+        const c = data?.config || {};
+        c.stakeInicial = stake;
+        c.protegerEmpate = protCheck;
+        c.valorProtecaoEmpate = CONFIG.valorProtecaoEmpate;
+        c.stopWin = sw;
+        c.stopLoss = sl;
+        chrome.storage.local.set({ config: c });
+      });
+    } catch (_) {}
+
+    // Reset stops no DecisionEngine pra contar a partir de agora
+    try {
+      if (typeof DecisionEngine !== 'undefined' && DecisionEngine.getState) {
+        const st = DecisionEngine.getState();
+        if (st && st.motivoParada && (st.motivoParada.includes('Stop Win') || st.motivoParada.includes('Stop Loss'))) {
+          st.motivoParada = null;
+          addLog('🔄 Stop anterior limpo — novos limites aplicados', 'info');
+        }
+      }
+    } catch (_) {}
+
+    setQuickConfigStatus(`✅ aplicado: stake R$${stake} prot R$${CONFIG.valorProtecaoEmpate} SW R$${sw} SL R$${sl}`, '#86efac');
+    addLog(`💵 Quick Config aplicado: stake=R$${stake} prot=${protCheck?`R$${CONFIG.valorProtecaoEmpate}`:'OFF'} SW=R$${sw} SL=R$${sl}`, 'success');
+    refreshSafetyBadges();
+    return true;
+  }
+
+  function setQuickConfigStatus(texto, cor) {
+    const el = document.getElementById('bb-qc-status');
+    if (el) { el.textContent = texto; el.style.color = cor || '#94a3b8'; }
+  }
+
+  /**
+   * Preenche os inputs com valores SUGERIDOS pela banca atual (nao aplica ainda).
+   * Diego (18/05): "sugerir banca de R$15 com stop win de R$1000 nao faz sentido".
+   */
+  function preencherSugestao() {
+    const sug = sugerirValoresPorBanca();
+    const stakeEl = document.getElementById('bb-qc-stake');
+    const protEl = document.getElementById('bb-qc-protegerempate');
+    const protValEl = document.getElementById('bb-qc-protvalor');
+    const swEl = document.getElementById('bb-qc-stopwin');
+    const slEl = document.getElementById('bb-qc-stoploss');
+    if (stakeEl) stakeEl.value = sug.stake;
+    if (protValEl) protValEl.value = sug.prot;
+    if (protEl) protEl.checked = sug.prot > 0;
+    if (swEl) swEl.value = sug.sw;
+    if (slEl) slEl.value = sug.sl;
+    setQuickConfigStatus(`💡 sugerido (${sug.motivo}). Clique ✅ APLICAR pra confirmar.`, '#c084fc');
+  }
+
+  // Detecta mudanca brusca da banca (3x ou +) e sugere reajustar.
+  let _ultimaBancaSugerida = null;
+  function detectarBancaIncoerente() {
+    const banca = Number(CONFIG.saldoReal || 0);
+    if (banca <= 0) return;
+    const sw = Number(CONFIG.stopWin || 0);
+    // Se stop win > 50% da banca OU < 5% da banca = desproporcional
+    const ratio = sw / banca;
+    if ((ratio > 0.5 || ratio < 0.05) && _ultimaBancaSugerida !== Math.floor(banca)) {
+      _ultimaBancaSugerida = Math.floor(banca);
+      setQuickConfigStatus(`⚠ STOP WIN R$${sw} desproporcional pra banca R$${banca.toFixed(2)}. Clique 💡 SUGERIR.`, '#fbbf24');
+    }
+  }
+
+  /**
+   * Carrega valores salvos do chrome.storage e preenche os inputs.
+   */
+  function carregarQuickConfig() {
+    try {
+      chrome.storage.local.get('config', (data) => {
+        const c = data?.config || {};
+        const stake = c.stakeInicial != null ? c.stakeInicial : CONFIG.stakeInicial;
+        const prot = c.protegerEmpate === true;
+        const protVal = c.valorProtecaoEmpate || 0;
+        const sw = c.stopWin || CONFIG.stopWin;
+        const sl = c.stopLoss || CONFIG.stopLoss;
+        const stakeEl = document.getElementById('bb-qc-stake');
+        const protEl = document.getElementById('bb-qc-protegerempate');
+        const protValEl = document.getElementById('bb-qc-protvalor');
+        const swEl = document.getElementById('bb-qc-stopwin');
+        const slEl = document.getElementById('bb-qc-stoploss');
+        if (stakeEl) stakeEl.value = stake;
+        if (protEl) protEl.checked = prot;
+        if (protValEl) protValEl.value = protVal;
+        if (swEl) swEl.value = sw;
+        if (slEl) slEl.value = sl;
+        setQuickConfigStatus('valores carregados', '#94a3b8');
+      });
+    } catch (_) {}
+  }
+
+  /**
    * Atualiza badges de SAFETY (banca, P/L, stop win, stop loss) — Diego (18/05):
    * "respeitar stop win e stop loss" + tudo visivel no overlay.
    * Le DecisionEngine state + CONFIG.
@@ -2891,6 +3063,7 @@ const Overlay = (() => {
     try { refreshWmsgBadge(); } catch (_) {}
     try { refreshSafetyBadges(); } catch (_) {}
     try { autoDetectarSaldoInsuficiente(); } catch (_) {}
+    try { detectarBancaIncoerente(); } catch (_) {}
   }
 
   /**
@@ -3083,6 +3256,12 @@ const Overlay = (() => {
           const salvo = data && data['bb-modo-teste'] === true;
           if (salvo || CONFIG.modoTeste) setModoObservacaoUI(true);
         });
+        // QUICK CONFIG (Diego, 18/05): controles rapidos no topo
+        carregarQuickConfig();
+        const qcApply = document.getElementById('bb-btn-qc-apply');
+        if (qcApply) qcApply.addEventListener('click', () => aplicarQuickConfig());
+        const qcSuggest = document.getElementById('bb-btn-qc-suggest');
+        if (qcSuggest) qcSuggest.addEventListener('click', () => preencherSugestao());
       } catch (e) {
         console.warn('[OPS-BADGES] falha no wireup:', e?.message || e);
       }
