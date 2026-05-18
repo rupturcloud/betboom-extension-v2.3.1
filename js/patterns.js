@@ -456,28 +456,13 @@ const PatternEngine = (() => {
 
       console.log('[BetBoom Auto] === INTELIGÊNCIA ATIVA (Will Dados Pro) ===');
 
+      console.log('[BetBoom Auto] === INTELIGÊNCIA ATIVA (WMSG-only) ===');
       console.log(`[BetBoom Auto]  - Padrões WMSG (Will Sequências Exatas): ${WMSG_PATTERNS.length} padrões`);
       WMSG_PATTERNS.forEach((p, i) => console.log(`[BetBoom Auto]    ${i + 1}. ${p.id} → ${p.enter}`));
-
-      console.log(`[BetBoom Auto]  - Padrões WILL Extras (streaks longos, complexos, empate duplo): ${WILL_EXTRA_PATTERNS.length} padrões`);
-      WILL_EXTRA_PATTERNS.forEach((p, i) => console.log(`[BetBoom Auto]    ${i + 1}. ${p.id} (tam=${p.seq.length}) → ${p.enter}`));
-
-      if (dynamicStrats.length > 0) {
-        console.log('[BetBoom Auto]  - Bibliotecas Dinâmicas:');
-        dynamicStrats.forEach((s, i) => console.log(`[BetBoom Auto]    ${i + 1}. ${s.nome} (${s.source})`));
-      }
-
-      console.log('[BetBoom Auto]  - Padrões Nativos (Hardcoded):');
-      natives.forEach((nome, i) => console.log(`[BetBoom Auto]    ${i + 1}. ${nome}`));
-
-      const totalPadroes = WMSG_PATTERNS.length + WILL_EXTRA_PATTERNS.length + dynamicStrats.length + natives.length;
-      console.log(`[BetBoom Auto] Total: ${totalPadroes} estratégias operacionais.`);
-      return [
-        ...WMSG_PATTERNS.map(p => p.id),
-        ...WILL_EXTRA_PATTERNS.map(p => p.id),
-        ...dynamicStrats.map(s => s.nome),
-        ...natives
-      ];
+      // Padroes WILL extras e nativos REMOVIDOS (commits 2365cd0 e fe3de8f).
+      // Modo estrito: so os 18 WMSG.
+      console.log(`[BetBoom Auto] Total: ${WMSG_PATTERNS.length} estratégias operacionais (modo estrito WMSG-only).`);
+      return [...WMSG_PATTERNS.map(p => p.id)];
     },
 
     setStrategyLibrary(list) {
@@ -512,16 +497,9 @@ const PatternEngine = (() => {
     },
 
     /**
-     * Quantidade total de padrões (WMSG + WILL extras + Nativos).
+     * Quantidade total de padrões (modo estrito WMSG-only).
      */
-    totalPadroes: WMSG_PATTERNS.length + WILL_EXTRA_PATTERNS.length + todosPadroes.length,
-
-    /**
-     * Retorna lista de padrões WILL Extras (streaks longos, complexos, empate duplo).
-     */
-    getWILLExtraPatterns() {
-      return WILL_EXTRA_PATTERNS.map(p => ({ ...p, seq: [...p.seq] }));
-    },
+    totalPadroes: WMSG_PATTERNS.length,
 
     /**
      * Retorna lista de padrões WMSG oficiais.
