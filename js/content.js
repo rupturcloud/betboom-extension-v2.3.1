@@ -1353,16 +1353,51 @@
       if ((!chip || !found) && permitirHeur) {
         const coords = calcularCoordsHeuristicas(normalizedAlvo, chipValue);
         if (coords) {
-          console.log(`[BB-CLICK] 🎯 FALLBACK HEURÍSTICO ATIVADO: ${normalizedAlvo} stake=${chipValue} canvas=${coords.refRect.canvas}`);
-          if (!chip) dispararCDPClick(coords.chip, `chip-${chipValue || '5'}`);
-          setTimeout(() => dispararCDPClick(coords.spot, normalizedAlvo), 350);
+          // Diego (18/05 code-review): adicionar jitter humano + delay variavel
+          // pra reduzir assinatura "robo" detectada pelo anti-fraude Evolution.
+          // Range ±4px (canvas Bac Bo eh ~720px largura — 4px nao tira do hitbox)
+          // Delay chip->spot 280-520ms (era fixo 350ms).
+          const jitter = () => (Math.random() * 8) - 4;
+          const delayMs = 280 + Math.floor(Math.random() * 240);
+          const chipCoord = { x: coords.chip.x + jitter(), y: coords.chip.y + jitter() };
+          const spotCoord = { x: coords.spot.x + jitter(), y: coords.spot.y + jitter() };
+          console.log(`[BB-CLICK] 🎯 FALLBACK HEURÍSTICO + JITTER: ${normalizedAlvo} stake=${chipValue} delay=${delayMs}ms canvas=${coords.refRect.canvas}`);
+          if (!chip) dispararCDPClick(chipCoord, `chip-${chipValue || '5'}`);
+          setTimeout(() => dispararCDPClick(spotCoord, normalizedAlvo), delayMs);
+          // Telemetria detalhada (Diego, 18/05): registra TUDO da tentativa de click
+          if (typeof window.TelemetryStream !== 'undefined') {
+            try {
+              window.TelemetryStream.push({
+                type: 'click_heuristico_disparado',
+                alvo: normalizedAlvo,
+                stake: chipValue,
+                chip_coord: chipCoord,
+                spot_coord: spotCoord,
+                delay_ms: delayMs,
+                jitter_aplicado: true,
+                canvas_only: !!coords.refRect.canvas,
+                metodo: 'fallback-heuristico'
+              });
+            } catch (_) {}
+          }
         } else {
           console.warn('[BB-CLICK] Heurística não disponível (sem canvas/viewport útil)');
         }
       } else if (!chip || !found) {
         console.warn(`[BB-CLICK] 🛑 SEM CLIQUE: ChipDetector falhou e fallback heurístico está DESATIVADO. Use BBCalibrator.tudo() pra calibrar coords reais da mesa.`);
-        // PRD: avisa o overlay no top frame que precisa calibrar. Top frame mostra
-        // banner amarelo gigante no overlay direcionando o usuário pra apertar 🎯 CAL.
+        // Diego (18/05 code-review): emite telemetria pra Claude ver que bloqueamos
+        // por SEGURANCA (anti-fraude). Saldo intacto > click errado.
+        if (typeof window.TelemetryStream !== 'undefined') {
+          try {
+            window.TelemetryStream.push({
+              type: 'click_bloqueado_sem_cal',
+              alvo: normalizedAlvo,
+              stake: chipValue,
+              motivo: 'ChipDetector falhou + fallback heuristico OFF (config.js permitirFallbackHeuristico=false)',
+              hint: 'rode BBCalibrator.tudo() ou comando cal_passo'
+            });
+          } catch (_) {}
+        }
         try {
           window.top.postMessage({
             source: 'bb-need-calibration',

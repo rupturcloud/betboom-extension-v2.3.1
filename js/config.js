@@ -8,7 +8,7 @@ const CONFIG = {
   stakeInicial: 5,          // Valor MÍNIMO REAL da mesa BetBoom (R$5 - R$25.000)
   stakeMax: 25,             // Limite seguro para fase de calibragem
   stakeCapMultiplier: 5,    // 🛑 SAFETY: cap absoluto = stakeInicial × 5 = R$25 max por aposta. Permite gale-2 com martingale 2x (5→10→20) sem disparo absurdo. Era 10, reduzido pra reforçar safety quando fallback heurístico voltou ligado.
-  permitirFallbackHeuristico: true,   // ♻️ RELIGADO (Diego, 16/05): mesa Bac Bo Mini é CANVAS-ONLY → ChipDetector acha 0 fichas no DOM → sem fallback, NUNCA clica. Risco mitigado pelo stakeCapMultiplier=5 (cap absoluto R$25). Em mesas live-high (idx 0 = R$5K), o cap impede disparo absurdo. CHIP_INDEX heurístico assume layout R$5/R$10/R$25/... — válido pra Bac Bo Mini de R$5 mínimo.
+  permitirFallbackHeuristico: false,  // 🔴 DESLIGADO (Diego, 18/05 — code-review): coords heurísticas (0.22/0.78 do iframe) batem em pixel errado SEMPRE em canvas-only, Evolution descarta como anti-fraude. Hit-rate 0% em 3+ sessões. PREFERÍVEL NÃO CLICAR a clicar errado. Volta a ON só APÓS validar que click hardware com coords calibradas (BBCalibrator) funciona.
 
   // ♻️ Diego (17/05): preferir UMA ficha unica e clicar varias vezes em vez de
   // misturar denominacoes. Reduz superficie de erro (so 1 coord precisa estar
