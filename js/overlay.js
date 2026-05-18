@@ -63,6 +63,13 @@ const Overlay = (() => {
         <span id="bb-parar-status" style="flex:1;color:#fca5a5;font-weight:800;font-size:11px;letter-spacing:0.5px;">🟢 OPERANDO — robô ativo</span>
         <button id="bb-btn-parar-global" style="padding:8px 16px;background:linear-gradient(135deg,#dc2626,#7f1d1d);color:#fff;border:none;border-radius:6px;font-weight:900;cursor:pointer;font-size:13px;box-shadow:0 3px 10px rgba(220,38,38,0.5);" title="Trava TUDO (atalho Ctrl+Shift+K)">🛑 PARAR (Ctrl+Shift+K)</button>
       </div>
+      <!-- Barra de status do AUTO-START (Diego, 17/05): visivel no overlay
+           porque mudancas que so saem em console nao contam como entregues. -->
+      <div id="bb-autostart-bar" style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:rgba(99,102,241,0.10);border-bottom:1px solid rgba(99,102,241,0.3);font-size:11px;">
+        <span id="bb-autostart-icon" style="font-size:14px;">⏳</span>
+        <span id="bb-autostart-label" style="flex:1;color:#c7d2fe;font-weight:700;letter-spacing:0.3px;">Auto-start: inicializando…</span>
+        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v5fe9cd1</span>
+      </div>
       <div class="bb-confirm-bar">
         <div class="bb-countdown-wrap">
           <button class="bb-btn-confirm" id="bb-btn-confirm" disabled>⏳ AGUARDANDO INDICAÇÃO</button>
@@ -1915,6 +1922,16 @@ const Overlay = (() => {
    * e DecisionEngine ainda nao estar rodando. Para de tentar depois de 60s
    * (60 tentativas) para nao ficar polling pra sempre se algo deu errado.
    */
+  function setAutoStartUI(icon, label, color) {
+    const iconEl = document.getElementById('bb-autostart-icon');
+    const labelEl = document.getElementById('bb-autostart-label');
+    if (iconEl) iconEl.textContent = icon;
+    if (labelEl) {
+      labelEl.textContent = label;
+      if (color) labelEl.style.color = color;
+    }
+  }
+
   function tentarAutoStart() {
     let tentativas = 0;
     const MAX_TENTATIVAS = 60;
@@ -1923,8 +1940,11 @@ const Overlay = (() => {
       if (data && data['bb-paradoManual'] === true) {
         console.log('[AUTO-START] desligado — Will parou manualmente. Clique ▶ Iniciar pra reativar.');
         addLog('🟡 Auto-start desligado (parou manualmente). Use ▶ Iniciar.', 'info');
+        setAutoStartUI('🟡', 'Auto-start DESLIGADO — Will parou manualmente. Clique ▶ INICIAR.', '#fbbf24');
         return;
       }
+
+      setAutoStartUI('⏳', 'Auto-start: aguardando mesa carregar (WS)…', '#c7d2fe');
 
       const interval = setInterval(() => {
         tentativas++;
@@ -1932,6 +1952,7 @@ const Overlay = (() => {
           clearInterval(interval);
           console.warn('[AUTO-START] desistiu apos 60s — modoPassivo nunca virou false');
           addLog('⚠️ Auto-start desistiu — clique ▶ Iniciar manualmente', 'warn');
+          setAutoStartUI('⚠️', 'Auto-start DESISTIU após 60s. Clique ▶ INICIAR manualmente.', '#f87171');
           return;
         }
         // Ja rodando?
@@ -1940,20 +1961,28 @@ const Overlay = (() => {
           if (state?.isAtivo) {
             clearInterval(interval);
             console.log('[AUTO-START] DecisionEngine ja esta ativo — nada a fazer');
+            setAutoStartUI('🟢', 'Auto-start: bot JÁ RODANDO (DecisionEngine ativo).', '#86efac');
             return;
           }
         } catch (_) {}
         // Mesa detectada?
-        if (CONFIG.modoPassivo) return; // ainda esperando WS evo-game
+        if (CONFIG.modoPassivo) {
+          if (tentativas % 5 === 0) {
+            setAutoStartUI('⏳', `Auto-start: aguardando WS evo-game… (${tentativas}/60s)`, '#c7d2fe');
+          }
+          return; // ainda esperando WS evo-game
+        }
         // Tudo certo — inicia
         clearInterval(interval);
         try {
           console.log(`[AUTO-START] 🟢 disparando iniciarBot() automaticamente (tentativa ${tentativas})`);
           addLog('▶ Auto-start: bot iniciado automaticamente', 'success');
+          setAutoStartUI('🟢', `Auto-start ATIVO — bot iniciado automaticamente (em ${tentativas}s).`, '#86efac');
           iniciarBot();
         } catch (e) {
           console.error('[AUTO-START] Erro:', e);
           addLog(`❌ Auto-start falhou: ${e?.message || e}`, 'error');
+          setAutoStartUI('❌', `Auto-start FALHOU: ${e?.message || e}`, '#f87171');
         }
       }, 1000);
     });
@@ -1965,6 +1994,7 @@ const Overlay = (() => {
   function iniciarBot() {
     // Limpa flag de parada manual — proximos reloads/aberturas voltam ao auto-start.
     try { chrome.storage.local.set({ 'bb-paradoManual': false }); } catch (_) {}
+    setAutoStartUI('🟢', 'Bot ATIVO — auto-start religado para próximos reloads.', '#86efac');
     chrome.storage.local.get('config', (data) => {
       if (data.config) {
         BBConfigUtils.applyPersistedConfig(CONFIG, data.config);
@@ -2226,6 +2256,7 @@ const Overlay = (() => {
   function pararBot() {
     // Marca que foi parada MANUAL — desliga auto-start ate Will clicar Iniciar de novo.
     try { chrome.storage.local.set({ 'bb-paradoManual': true }); } catch (_) {}
+    setAutoStartUI('🟡', 'Bot PARADO manualmente — auto-start desligado nos próximos reloads.', '#fbbf24');
     DecisionEngine.parar();
     Collector.parar();
 
