@@ -90,7 +90,7 @@ const Overlay = (() => {
       <div id="bb-autostart-bar" style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:rgba(99,102,241,0.10);border-bottom:1px solid rgba(99,102,241,0.3);font-size:11px;">
         <span id="bb-autostart-icon" style="font-size:14px;">⏳</span>
         <span id="bb-autostart-label" style="flex:1;color:#c7d2fe;font-weight:700;letter-spacing:0.3px;">Auto-start: inicializando…</span>
-        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v15-quick-config</span>
+        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v16-telemetry-server</span>
       </div>
       <!-- Barra OPERACIONAL: calibracao + hit-rate de click + status WMSG -->
       <div id="bb-ops-bar" style="display:flex;gap:6px;align-items:center;padding:6px 10px;background:rgba(15,23,42,0.6);border-bottom:1px solid rgba(99,102,241,0.2);font-size:10px;flex-wrap:wrap;">
@@ -2741,8 +2741,16 @@ const Overlay = (() => {
               // Bloqueio cirurgico — decisao real existe mas nao eh WMSG
               addLog(`🚫 Decisao BLOQUEADA: source="${origemRaw}" nao eh WMSG (so 18 padroes oficiais entram)`, 'warn');
               console.warn(`[GUARD-ORIGEM] decisao bloqueada — source=${origemRaw}, esperado wmsg*`);
+              if (typeof TelemetryStream !== 'undefined') TelemetryStream.push({
+                type: 'guard_origem_bloqueado', source: origemRaw, cor: decisao.cor, padrao: decisao.padrao?.nome,
+              });
               return;
             }
+            if (typeof TelemetryStream !== 'undefined') TelemetryStream.push({
+              type: 'decisao_tomada', cor: decisao.cor, source: origemRaw, padrao: decisao.padrao?.nome,
+              stake: decisao.stake, conviction: decisao.convictionScore, gale: decisao.maxGalesPermitido,
+              modoTeste: CONFIG.modoTeste,
+            });
             addLog(`Rodada ${rodadaOperador}: ${decisao.padrao.nome} | ${BBStrategyUtils.getEntryLabel(decisao.cor)} | G${decisao.maxGalesPermitido} | ${CONFIG.modoTeste ? 'Simulado' : 'Aguardando clique'}`, 'info');
             if (CONFIG.modoTeste) {
               addLog(`Modo teste: ${decisao.padrao.nome} → ${decisao.cor} | G${decisao.maxGalesPermitido}`, 'warn');
@@ -3184,6 +3192,12 @@ const Overlay = (() => {
 
   // --- API Pública ---
   return {
+    // Expostos para TelemetryStreamer (comandos remotos via servidor):
+    dispararCalibracao,
+    pararBot,
+    iniciarBot,
+    setModoObservacaoUI,
+    aplicarQuickConfig,
     inicializar() {
       const existente = document.getElementById('bb-auto-overlay');
       if (existente) existente.remove();
