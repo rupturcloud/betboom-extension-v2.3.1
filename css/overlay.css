@@ -2,13 +2,17 @@
 
 #bb-auto-overlay {
   position: fixed;
-  top: 2vh;
-  left: 10px;
-  width: min(90vw, 360px);
-  max-height: 72vh;
+  top: 1vh;
+  left: 8px;
+  /* Diego (18/05): one-page mobile-first. Cabe ao lado da banca sem tampar
+     histórico. Largura curta (~320px), altura quase total (96vh),
+     overflow=hidden no container (cada subseção pode scrollar se precisar). */
+  width: min(94vw, 320px);
+  height: 96vh;
+  max-height: 96vh;
   min-width: 200px;
   min-height: 80px;
-  background: rgba(12, 18, 36, 0.92);
+  background: rgba(12, 18, 36, 0.94);
   backdrop-filter: blur(14px) saturate(190%);
   -webkit-backdrop-filter: blur(14px) saturate(190%);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -19,11 +23,53 @@
   font-size: 9px;
   color: #d1d5db;
   user-select: none;
-  overflow: auto;
+  overflow: hidden;       /* nao scroll no container — body interno scrolla */
   resize: both;
   display: flex;
   flex-direction: column;
 }
+
+/* Modo COMPACTO (Diego, 18/05): toda barra superior fica mais magra,
+   labels truncadas, fontes 1pt menores. Body do meio (bb-body) ganha
+   o resto do espaco com scroll vertical proprio. */
+#bb-auto-overlay .bb-header { padding: 5px 8px; }
+#bb-auto-overlay .bb-title { font-size: 11px; }
+#bb-auto-overlay .bb-btn-sm { width: 18px; height: 18px; font-size: 12px; }
+#bb-auto-overlay #bb-quick-config-bar,
+#bb-auto-overlay #bb-quick-actions-bar,
+#bb-auto-overlay #bb-parar-bar,
+#bb-auto-overlay #bb-autostart-bar,
+#bb-auto-overlay #bb-ops-bar,
+#bb-auto-overlay #bb-safety-bar,
+#bb-auto-overlay #bb-obs-banner {
+  padding: 4px 8px !important;
+  font-size: 9px !important;
+  gap: 3px !important;
+}
+#bb-auto-overlay #bb-quick-config-bar select,
+#bb-auto-overlay #bb-quick-config-bar input { font-size: 9px !important; padding: 2px 4px !important; }
+#bb-auto-overlay #bb-quick-config-bar button,
+#bb-auto-overlay #bb-ops-bar button,
+#bb-auto-overlay #bb-quick-actions-bar button,
+#bb-auto-overlay #bb-parar-bar button {
+  padding: 3px 6px !important;
+  font-size: 9px !important;
+}
+#bb-auto-overlay #bb-ops-bar span,
+#bb-auto-overlay #bb-safety-bar span {
+  padding: 2px 5px !important;
+  font-size: 9px !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+#bb-auto-overlay #bb-autostart-bar { padding: 3px 8px !important; font-size: 9px !important; }
+#bb-auto-overlay #bb-autostart-label { font-size: 9px !important; }
+/* Body do meio toma o resto e tem scroll interno proprio */
+#bb-auto-overlay .bb-body { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+#bb-auto-overlay .bb-body::-webkit-scrollbar { width: 5px; }
+#bb-auto-overlay .bb-body::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.4); border-radius: 3px; }
 
 /* Header */
 .bb-header {
