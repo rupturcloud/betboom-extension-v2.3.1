@@ -56,12 +56,30 @@ const Overlay = (() => {
            Sao "liberadores/bloqueadores" da extensao, precisam ter coerencia
            com a banca. Botao SUGERIR aplica proporcoes recomendadas. -->
       <div id="bb-quick-config-bar" style="display:flex;gap:4px;align-items:center;padding:6px 8px;background:linear-gradient(135deg,rgba(30,41,59,0.85),rgba(15,23,42,0.85));border-bottom:1px solid rgba(99,102,241,0.3);font-size:10px;flex-wrap:wrap;">
-        <label style="display:flex;align-items:center;gap:3px;color:#cbd5e1;font-weight:700;">💵 STAKE
-          <input id="bb-qc-stake" type="number" min="1" step="1" value="5" style="width:50px;padding:3px 5px;background:rgba(15,23,42,0.8);color:#fff;border:1px solid rgba(99,102,241,0.4);border-radius:3px;font-weight:800;font-size:11px;text-align:right;">
+        <label style="display:flex;align-items:center;gap:3px;color:#cbd5e1;font-weight:700;" title="Stake da aposta — lista de fichas BetBoom">💵 STAKE
+          <select id="bb-qc-stake" style="padding:3px 5px;background:rgba(15,23,42,0.9);color:#fff;border:1px solid rgba(99,102,241,0.4);border-radius:3px;font-weight:800;font-size:11px;cursor:pointer;">
+            <option value="5">⚪ R$ 5</option>
+            <option value="10">🩷 R$ 10</option>
+            <option value="25">🔴 R$ 25</option>
+            <option value="125">🟢 R$ 125</option>
+            <option value="500">⚫ R$ 500</option>
+            <option value="2500">🟣 R$ 2.5K</option>
+            <option value="5000">🟡 R$ 5K</option>
+            <option value="12000">🟠 R$ 12K+</option>
+          </select>
         </label>
-        <label style="display:flex;align-items:center;gap:3px;color:#cbd5e1;font-weight:700;" title="Protege empate apostando valor X no empate junto da entrada">
-          <input id="bb-qc-protegerempate" type="checkbox" style="margin:0;cursor:pointer;"> 🛡 PROT
-          <input id="bb-qc-protvalor" type="number" min="0" step="1" value="0" style="width:40px;padding:3px 5px;background:rgba(15,23,42,0.8);color:#fff;border:1px solid rgba(99,102,241,0.4);border-radius:3px;font-weight:800;font-size:11px;text-align:right;">
+        <label style="display:flex;align-items:center;gap:3px;color:#cbd5e1;font-weight:700;" title="Protecao empate — '0 | Desprotegido' = sem protecao">🛡 PROT
+          <select id="bb-qc-protvalor" style="padding:3px 5px;background:rgba(15,23,42,0.9);color:#fff;border:1px solid rgba(99,102,241,0.4);border-radius:3px;font-weight:800;font-size:11px;cursor:pointer;">
+            <option value="0">🚫 0 | Desprotegido</option>
+            <option value="5">⚪ Proteger com R$ 5</option>
+            <option value="10">🩷 Proteger com R$ 10</option>
+            <option value="25">🔴 Proteger com R$ 25</option>
+            <option value="125">🟢 Proteger com R$ 125</option>
+            <option value="500">⚫ Proteger com R$ 500</option>
+            <option value="2500">🟣 Proteger com R$ 2.5K</option>
+            <option value="5000">🟡 Proteger com R$ 5K</option>
+            <option value="12000">🟠 Proteger com R$ 12K+</option>
+          </select>
         </label>
         <label style="display:flex;align-items:center;gap:3px;color:#86efac;font-weight:700;" title="Para sessao ao atingir esse lucro">🎯 SW
           <input id="bb-qc-stopwin" type="number" min="1" step="1" value="1000" style="width:60px;padding:3px 5px;background:rgba(15,23,42,0.8);color:#86efac;border:1px solid rgba(34,197,94,0.4);border-radius:3px;font-weight:800;font-size:11px;text-align:right;">
@@ -90,7 +108,7 @@ const Overlay = (() => {
       <div id="bb-autostart-bar" style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:rgba(99,102,241,0.10);border-bottom:1px solid rgba(99,102,241,0.3);font-size:11px;">
         <span id="bb-autostart-icon" style="font-size:14px;">⏳</span>
         <span id="bb-autostart-label" style="flex:1;color:#c7d2fe;font-weight:700;letter-spacing:0.3px;">Auto-start: inicializando…</span>
-        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v16-telemetry-server</span>
+        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v17-chip-select</span>
       </div>
       <!-- Barra OPERACIONAL: calibracao + hit-rate de click + status WMSG -->
       <div id="bb-ops-bar" style="display:flex;gap:6px;align-items:center;padding:6px 10px;background:rgba(15,23,42,0.6);border-bottom:1px solid rgba(99,102,241,0.2);font-size:10px;flex-wrap:wrap;">
@@ -2161,8 +2179,9 @@ const Overlay = (() => {
    */
   function aplicarQuickConfig() {
     const stake = Number(document.getElementById('bb-qc-stake')?.value || CONFIG.stakeInicial);
-    const protCheck = document.getElementById('bb-qc-protegerempate')?.checked === true;
+    // PROT agora eh um select com valores 0..12000. 0 = desprotegido.
     const protValor = Number(document.getElementById('bb-qc-protvalor')?.value || 0);
+    const protOn = protValor > 0;
     const sw = Number(document.getElementById('bb-qc-stopwin')?.value || CONFIG.stopWin);
     const sl = Number(document.getElementById('bb-qc-stoploss')?.value || CONFIG.stopLoss);
 
@@ -2180,8 +2199,8 @@ const Overlay = (() => {
     }
 
     CONFIG.stakeInicial = stake;
-    CONFIG.protegerEmpate = protCheck;
-    CONFIG.valorProtecaoEmpate = protCheck ? Math.max(1, protValor) : 0;
+    CONFIG.protegerEmpate = protOn;
+    CONFIG.valorProtecaoEmpate = protValor;
     CONFIG.stopWin = sw;
     CONFIG.stopLoss = sl;
 
@@ -2190,8 +2209,8 @@ const Overlay = (() => {
       chrome.storage.local.get('config', (data) => {
         const c = data?.config || {};
         c.stakeInicial = stake;
-        c.protegerEmpate = protCheck;
-        c.valorProtecaoEmpate = CONFIG.valorProtecaoEmpate;
+        c.protegerEmpate = protOn;
+        c.valorProtecaoEmpate = protValor;
         c.stopWin = sw;
         c.stopLoss = sl;
         chrome.storage.local.set({ config: c });
@@ -2209,8 +2228,9 @@ const Overlay = (() => {
       }
     } catch (_) {}
 
-    setQuickConfigStatus(`✅ aplicado: stake R$${stake} prot R$${CONFIG.valorProtecaoEmpate} SW R$${sw} SL R$${sl}`, '#86efac');
-    addLog(`💵 Quick Config aplicado: stake=R$${stake} prot=${protCheck?`R$${CONFIG.valorProtecaoEmpate}`:'OFF'} SW=R$${sw} SL=R$${sl}`, 'success');
+    const protLabel = protOn ? `R$${protValor}` : 'DESPROTEGIDO';
+    setQuickConfigStatus(`✅ aplicado: stake R$${stake} prot ${protLabel} SW R$${sw} SL R$${sl}`, '#86efac');
+    addLog(`💵 Quick Config aplicado: stake=R$${stake} prot=${protLabel} SW=R$${sw} SL=R$${sl}`, 'success');
     refreshSafetyBadges();
     return true;
   }
@@ -2224,16 +2244,26 @@ const Overlay = (() => {
    * Preenche os inputs com valores SUGERIDOS pela banca atual (nao aplica ainda).
    * Diego (18/05): "sugerir banca de R$15 com stop win de R$1000 nao faz sentido".
    */
+  // Fichas oficiais BetBoom para snap dos selects.
+  const FICHAS_BB = [5, 10, 25, 125, 500, 2500, 5000, 12000];
+
+  // Arredonda pra ficha mais proxima (pra baixo) — selects so aceitam valores listados.
+  function snapFicha(valor) {
+    const v = Number(valor);
+    if (!Number.isFinite(v) || v < 5) return 5;
+    let candidato = FICHAS_BB[0];
+    for (const f of FICHAS_BB) if (f <= v) candidato = f;
+    return candidato;
+  }
+
   function preencherSugestao() {
     const sug = sugerirValoresPorBanca();
     const stakeEl = document.getElementById('bb-qc-stake');
-    const protEl = document.getElementById('bb-qc-protegerempate');
     const protValEl = document.getElementById('bb-qc-protvalor');
     const swEl = document.getElementById('bb-qc-stopwin');
     const slEl = document.getElementById('bb-qc-stoploss');
-    if (stakeEl) stakeEl.value = sug.stake;
-    if (protValEl) protValEl.value = sug.prot;
-    if (protEl) protEl.checked = sug.prot > 0;
+    if (stakeEl) stakeEl.value = String(snapFicha(sug.stake));
+    if (protValEl) protValEl.value = String(sug.prot > 0 ? snapFicha(sug.prot) : 0);
     if (swEl) swEl.value = sug.sw;
     if (slEl) slEl.value = sug.sl;
     setQuickConfigStatus(`💡 sugerido (${sug.motivo}). Clique ✅ APLICAR pra confirmar.`, '#c084fc');
@@ -2261,18 +2291,16 @@ const Overlay = (() => {
       chrome.storage.local.get('config', (data) => {
         const c = data?.config || {};
         const stake = c.stakeInicial != null ? c.stakeInicial : CONFIG.stakeInicial;
-        const prot = c.protegerEmpate === true;
-        const protVal = c.valorProtecaoEmpate || 0;
+        const protVal = c.protegerEmpate === true ? (c.valorProtecaoEmpate || 0) : 0;
         const sw = c.stopWin || CONFIG.stopWin;
         const sl = c.stopLoss || CONFIG.stopLoss;
         const stakeEl = document.getElementById('bb-qc-stake');
-        const protEl = document.getElementById('bb-qc-protegerempate');
         const protValEl = document.getElementById('bb-qc-protvalor');
         const swEl = document.getElementById('bb-qc-stopwin');
         const slEl = document.getElementById('bb-qc-stoploss');
-        if (stakeEl) stakeEl.value = stake;
-        if (protEl) protEl.checked = prot;
-        if (protValEl) protValEl.value = protVal;
+        // Snap pra ficha listada nos selects
+        if (stakeEl) stakeEl.value = String(snapFicha(stake));
+        if (protValEl) protValEl.value = String(protVal > 0 ? snapFicha(protVal) : 0);
         if (swEl) swEl.value = sw;
         if (slEl) slEl.value = sl;
         setQuickConfigStatus('valores carregados', '#94a3b8');
