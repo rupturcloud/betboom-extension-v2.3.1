@@ -68,7 +68,7 @@ const Overlay = (() => {
       <div id="bb-autostart-bar" style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:rgba(99,102,241,0.10);border-bottom:1px solid rgba(99,102,241,0.3);font-size:11px;">
         <span id="bb-autostart-icon" style="font-size:14px;">⏳</span>
         <span id="bb-autostart-label" style="flex:1;color:#c7d2fe;font-weight:700;letter-spacing:0.3px;">Auto-start: inicializando…</span>
-        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v12-fix-patterns-load</span>
+        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v13-modo-observacao</span>
       </div>
       <!-- Barra OPERACIONAL: calibracao + hit-rate de click + status WMSG -->
       <div id="bb-ops-bar" style="display:flex;gap:6px;align-items:center;padding:6px 10px;background:rgba(15,23,42,0.6);border-bottom:1px solid rgba(99,102,241,0.2);font-size:10px;flex-wrap:wrap;">
@@ -76,6 +76,11 @@ const Overlay = (() => {
         <span id="bb-hit-badge" title="Taxa de sucesso dos cliques (saldo decrementa)" style="padding:3px 8px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:4px;color:#94a3b8;font-weight:700;">🎲 CLICKS: 0/0</span>
         <span id="bb-wmsg-badge" title="Ultimas 4 cores e match WMSG" style="flex:1;padding:3px 8px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);border-radius:4px;color:#c7d2fe;font-weight:700;text-align:center;">📊 WMSG: aguardando 4+ cores</span>
         <button id="bb-btn-cal-now" title="Calibrar mesa agora (BBCalibrator.tudo())" style="padding:3px 8px;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;border:none;border-radius:4px;font-weight:800;cursor:pointer;font-size:10px;">🎯 CAL</button>
+        <button id="bb-btn-modo-teste" title="Alterna modo OBSERVACAO: bot decide mas nao clica" style="padding:3px 8px;background:linear-gradient(135deg,#475569,#334155);color:#fff;border:none;border-radius:4px;font-weight:800;cursor:pointer;font-size:10px;">🧪 OBSERVAR</button>
+      </div>
+      <!-- Banner MODO OBSERVACAO — destaque quando modoTeste=true (Diego, 18/05) -->
+      <div id="bb-obs-banner" style="display:none;padding:8px 10px;background:linear-gradient(135deg,rgba(168,85,247,0.25),rgba(124,58,237,0.25));border-bottom:2px solid rgba(168,85,247,0.6);font-size:12px;color:#e9d5ff;font-weight:800;text-align:center;letter-spacing:0.5px;">
+        🧪 MODO OBSERVAÇÃO ATIVO — robô decide e mostra tudo, mas NÃO clica (sem aposta real)
       </div>
       <div class="bb-confirm-bar">
         <div class="bb-countdown-wrap">
@@ -2095,6 +2100,44 @@ const Overlay = (() => {
     }
   }
 
+  /**
+   * Sincroniza UI do MODO OBSERVACAO (Diego, 18/05).
+   * Acionado por: botao manual, auto-detect saldo < stake minimo, carga inicial.
+   */
+  function setModoObservacaoUI(on) {
+    CONFIG.modoTeste = !!on;
+    try { chrome.storage.local.set({ 'bb-modo-teste': !!on }); } catch (_) {}
+    const banner = document.getElementById('bb-obs-banner');
+    if (banner) banner.style.display = on ? 'block' : 'none';
+    const btn = document.getElementById('bb-btn-modo-teste');
+    if (btn) {
+      if (on) {
+        btn.textContent = '🎯 APOSTAR';
+        btn.title = 'Desliga MODO OBSERVACAO — robo volta a clicar de verdade';
+        btn.style.background = 'linear-gradient(135deg,#a855f7,#7c3aed)';
+      } else {
+        btn.textContent = '🧪 OBSERVAR';
+        btn.title = 'Liga MODO OBSERVACAO — bot decide mas nao clica';
+        btn.style.background = 'linear-gradient(135deg,#475569,#334155)';
+      }
+    }
+    if (on) addLog('🧪 MODO OBSERVAÇÃO ATIVO — bot decide mas nao clica', 'warn');
+    else addLog('🎯 Modo APOSTAR — bot volta a clicar de verdade', 'success');
+  }
+
+  // Auto-detect: saldo < stake minimo -> liga modoTeste automaticamente
+  let _modoTesteAutoSetado = false;
+  function autoDetectarSaldoInsuficiente() {
+    const saldo = Number(CONFIG.saldoReal);
+    const stakeMin = Number(CONFIG.stakeInicial || 5);
+    if (!Number.isFinite(saldo)) return;
+    if (saldo < stakeMin && !CONFIG.modoTeste && !_modoTesteAutoSetado) {
+      _modoTesteAutoSetado = true;
+      addLog(`💸 Saldo R$ ${saldo.toFixed(2)} < stake minimo R$ ${stakeMin} — ligando MODO OBSERVACAO automatico`, 'warn');
+      setModoObservacaoUI(true);
+    }
+  }
+
   function setAutoStartUI(icon, label, color) {
     const iconEl = document.getElementById('bb-autostart-icon');
     const labelEl = document.getElementById('bb-autostart-label');
@@ -2749,6 +2792,7 @@ const Overlay = (() => {
     // Badges operacionais (cal + hit-rate + WMSG): refresh em todo ciclo de UI.
     try { refreshHitRateBadge(); } catch (_) {}
     try { refreshWmsgBadge(); } catch (_) {}
+    try { autoDetectarSaldoInsuficiente(); } catch (_) {}
   }
 
   /**
@@ -2930,6 +2974,17 @@ const Overlay = (() => {
         });
         refreshHitRateBadge();
         refreshWmsgBadge();
+        // MODO OBSERVACAO — botao + restaurar estado salvo (Diego, 18/05)
+        const modoBtn = document.getElementById('bb-btn-modo-teste');
+        if (modoBtn) {
+          modoBtn.addEventListener('click', () => {
+            setModoObservacaoUI(!CONFIG.modoTeste);
+          });
+        }
+        chrome.storage.local.get('bb-modo-teste', (data) => {
+          const salvo = data && data['bb-modo-teste'] === true;
+          if (salvo || CONFIG.modoTeste) setModoObservacaoUI(true);
+        });
       } catch (e) {
         console.warn('[OPS-BADGES] falha no wireup:', e?.message || e);
       }
