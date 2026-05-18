@@ -1907,9 +1907,64 @@ const Overlay = (() => {
   }
 
   /**
+   * AUTO-START — chama iniciarBot() automaticamente assim que o overlay carrega,
+   * exceto se o Will parou manualmente na sessao anterior (flag bb-paradoManual=true
+   * persistida em chrome.storage.local).
+   *
+   * Poll: tenta a cada 1s ate (a) modoPassivo virar false (WS detectou mesa)
+   * e DecisionEngine ainda nao estar rodando. Para de tentar depois de 60s
+   * (60 tentativas) para nao ficar polling pra sempre se algo deu errado.
+   */
+  function tentarAutoStart() {
+    let tentativas = 0;
+    const MAX_TENTATIVAS = 60;
+
+    chrome.storage.local.get('bb-paradoManual', (data) => {
+      if (data && data['bb-paradoManual'] === true) {
+        console.log('[AUTO-START] desligado — Will parou manualmente. Clique ▶ Iniciar pra reativar.');
+        addLog('🟡 Auto-start desligado (parou manualmente). Use ▶ Iniciar.', 'info');
+        return;
+      }
+
+      const interval = setInterval(() => {
+        tentativas++;
+        if (tentativas > MAX_TENTATIVAS) {
+          clearInterval(interval);
+          console.warn('[AUTO-START] desistiu apos 60s — modoPassivo nunca virou false');
+          addLog('⚠️ Auto-start desistiu — clique ▶ Iniciar manualmente', 'warn');
+          return;
+        }
+        // Ja rodando?
+        try {
+          const state = typeof DecisionEngine !== 'undefined' ? DecisionEngine.getState?.() : null;
+          if (state?.isAtivo) {
+            clearInterval(interval);
+            console.log('[AUTO-START] DecisionEngine ja esta ativo — nada a fazer');
+            return;
+          }
+        } catch (_) {}
+        // Mesa detectada?
+        if (CONFIG.modoPassivo) return; // ainda esperando WS evo-game
+        // Tudo certo — inicia
+        clearInterval(interval);
+        try {
+          console.log(`[AUTO-START] 🟢 disparando iniciarBot() automaticamente (tentativa ${tentativas})`);
+          addLog('▶ Auto-start: bot iniciado automaticamente', 'success');
+          iniciarBot();
+        } catch (e) {
+          console.error('[AUTO-START] Erro:', e);
+          addLog(`❌ Auto-start falhou: ${e?.message || e}`, 'error');
+        }
+      }, 1000);
+    });
+  }
+
+  /**
    * Inicia o bot.
    */
   function iniciarBot() {
+    // Limpa flag de parada manual — proximos reloads/aberturas voltam ao auto-start.
+    try { chrome.storage.local.set({ 'bb-paradoManual': false }); } catch (_) {}
     chrome.storage.local.get('config', (data) => {
       if (data.config) {
         BBConfigUtils.applyPersistedConfig(CONFIG, data.config);
@@ -2158,6 +2213,8 @@ const Overlay = (() => {
    * Para o bot.
    */
   function pararBot() {
+    // Marca que foi parada MANUAL — desliga auto-start ate Will clicar Iniciar de novo.
+    try { chrome.storage.local.set({ 'bb-paradoManual': true }); } catch (_) {}
     DecisionEngine.parar();
     Collector.parar();
 
@@ -2539,6 +2596,10 @@ const Overlay = (() => {
       vincularEventos();
 
       Logger.info('Overlay v2 inicializado.');
+      // AUTO-START (Diego, 17/05): inicia automaticamente em todo carregamento/reload
+      // do overlay, EXCETO quando Will parou manualmente (flag bb-paradoManual=true
+      // persistida em chrome.storage.local). Resetada quando Will clica Iniciar manual.
+      tentarAutoStart();
       ultimoSaldoKey = null;
       ultimoResultadoKey = null;
       ultimoEstadoKey = null;
