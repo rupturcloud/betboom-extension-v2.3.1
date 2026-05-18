@@ -1932,6 +1932,40 @@ const Overlay = (() => {
     }
   }
 
+  /**
+   * Sincroniza botões INICIAR (barra rápida + seção) com estado real do bot.
+   * Diego (17/05): "se esta iniciado, porque eu deveria ver o iniciar
+   * disponivel?" — botões refletem estado: ativo = desabilitado/cinza.
+   */
+  function setBotControlsUI(isAtivo) {
+    const quickStart = document.getElementById('bb-btn-quick-start');
+    if (quickStart) {
+      if (isAtivo) {
+        quickStart.textContent = '✓ RODANDO';
+        quickStart.disabled = true;
+        quickStart.style.background = 'linear-gradient(135deg,#475569,#334155)';
+        quickStart.style.boxShadow = 'none';
+        quickStart.style.cursor = 'not-allowed';
+        quickStart.style.opacity = '0.7';
+        quickStart.title = 'Bot já está rodando. Use 🛑 PARAR pra encerrar.';
+      } else {
+        quickStart.textContent = '▶ INICIAR';
+        quickStart.disabled = false;
+        quickStart.style.background = 'linear-gradient(135deg,#16a34a,#15803d)';
+        quickStart.style.boxShadow = '0 2px 6px rgba(22,163,74,0.4)';
+        quickStart.style.cursor = 'pointer';
+        quickStart.style.opacity = '1';
+        quickStart.title = 'Liga o robô (mesmo que ▶ Iniciar)';
+      }
+    }
+    const startBtn = document.getElementById('bb-btn-start');
+    if (startBtn) {
+      startBtn.disabled = isAtivo;
+      startBtn.style.opacity = isAtivo ? '0.5' : '1';
+      startBtn.style.cursor = isAtivo ? 'not-allowed' : 'pointer';
+    }
+  }
+
   function tentarAutoStart() {
     let tentativas = 0;
     const MAX_TENTATIVAS = 60;
@@ -1962,6 +1996,7 @@ const Overlay = (() => {
             clearInterval(interval);
             console.log('[AUTO-START] DecisionEngine ja esta ativo — nada a fazer');
             setAutoStartUI('🟢', 'Auto-start: bot JÁ RODANDO (DecisionEngine ativo).', '#86efac');
+            setBotControlsUI(true);
             return;
           }
         } catch (_) {}
@@ -1995,6 +2030,7 @@ const Overlay = (() => {
     // Limpa flag de parada manual — proximos reloads/aberturas voltam ao auto-start.
     try { chrome.storage.local.set({ 'bb-paradoManual': false }); } catch (_) {}
     setAutoStartUI('🟢', 'Bot ATIVO — auto-start religado para próximos reloads.', '#86efac');
+    setBotControlsUI(true);
     chrome.storage.local.get('config', (data) => {
       if (data.config) {
         BBConfigUtils.applyPersistedConfig(CONFIG, data.config);
@@ -2257,6 +2293,7 @@ const Overlay = (() => {
     // Marca que foi parada MANUAL — desliga auto-start ate Will clicar Iniciar de novo.
     try { chrome.storage.local.set({ 'bb-paradoManual': true }); } catch (_) {}
     setAutoStartUI('🟡', 'Bot PARADO manualmente — auto-start desligado nos próximos reloads.', '#fbbf24');
+    setBotControlsUI(false);
     DecisionEngine.parar();
     Collector.parar();
 
