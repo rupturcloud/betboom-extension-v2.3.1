@@ -10,48 +10,64 @@ flowchart TD
 
     Main -.postMessage.-> Iso
 
-    OpenExt[Will abre popup da extensao] --> PopupUI[popup.js mostra saldo + estrategia]
-    PopupUI --> Overlay[overlay.js renderiza tabuleiro 6x26]
+    Iso --> OverlayInit[Overlay.inicializar]
+    OverlayInit --> AutoStart{bb-paradoManual==true?}
+    AutoStart -->|Sim| AutoOff[Badge: AutoStart DESLIGADO Aguarda click INICIAR]
+    AutoStart -->|Nao| Poll[Poll 1s ate WS evo-game OU 60s]
+    Poll --> AutoOn[Badge AutoStart ATIVO Bot iniciado automaticamente]
+    AutoOff -.click INICIAR.-> Iniciar
+    AutoOn --> Iniciar[iniciarBot]
+
+    Iniciar --> Collect[Collector.iniciar + DecisionEngine.iniciar]
+    Collect --> CallbackReg[Collector.onNovoResultado callback REGISTRADO]
+    CallbackReg --> ButtonState[Botao vira REINICIAR laranja]
 
     Iso --> WaitWS{Frame WS chegou?}
     WaitWS -->|Nao| WaitWS
     WaitWS -->|Sim| Parse[content.js parseia frame]
 
-    Parse --> Collect[collector.js atualiza FIFO 6x26 + signature]
-
-    Collect --> SigCheck{Signature ja vista?}
+    Parse --> CollectFIFO[collector.js atualiza FIFO 6x26 signature gid]
+    CollectFIFO --> SigCheck{Signature ja vista?}
     SigCheck -->|Sim| Skip[Ignora - idempotencia]
-    SigCheck -->|Nao| Pipeline[robo-runtime.js 7 checkpoints]
+    SigCheck -->|Nao| Pipeline[PatternEngine.analisar 18 WMSG SOMENTE]
 
-    Pipeline --> CP1{1.VALIDATE_HISTORY FIFO integro?}
+    Pipeline --> WmsgMatch{Algum dos 18 WMSG bateu?}
+    WmsgMatch -->|Nao| Aguardando[Badge Aguardando padrao WMSG bb-padrao=Aguardando]
+    WmsgMatch -->|Sim| Decision[robo-runtime 7 checkpoints]
+
+    Decision --> CP1{1.VALIDATE_HISTORY integro?}
     CP1 -->|Nao| Abort[Aborta rodada]
-    CP1 -->|Sim| CP2[2.TELEMETRY log contexto]
+    CP1 -->|Sim| CP2[2.VALIDATE_TELEMETRY]
 
-    CP2 --> CP3{3.PATTERN faixa 50-60% ou 70-78%?}
-    CP3 -->|Fora| Wait[Aguarda proxima rodada]
-    CP3 -->|Dentro| CP4{4.CONTEXT banca/stack/gale OK?}
+    CP2 --> CP3{3.MATCH_PATTERN confianca >= 60%?}
+    CP3 -->|Nao| Wait[Aguarda proxima rodada]
+    CP3 -->|Sim| CP4{4.EVALUATE_CONTEXT banca OK?}
 
     CP4 -->|Nao| Abort
-    CP4 -->|Sim| CP5[5.CONSENSUS engines votam]
+    CP4 -->|Sim| CP5[5.RESOLVE_CONSENSUS]
 
-    CP5 --> CP6{6.CONVICTION empate?}
-    CP6 -->|Sim| Blue[Forca AZUL]
-    CP6 -->|Nao| Invert[Inverte azul-vermelho na faixa]
+    CP5 --> CP6{6.CALCULATE_CONVICTION empate?}
+    CP6 -->|Sim| Blue[Forca AZUL empate-inverte]
+    CP6 -->|Nao| Invert[Inverte azul-vermelho na faixa 50-60 ou 70-78]
     Blue --> CP7
     Invert --> CP7
 
-    CP7{7.SAFETY cap R$5K?}
+    CP7{7.SAFETY_CHECK cap R$25?}
     CP7 -->|Acima| Abort
-    CP7 -->|OK| Decision[/action: BET color: AZUL amount: R$100/]
+    CP7 -->|OK| DecisaoFinal[action: BET color: AZUL amount: R$5]
 
-    Decision --> Exec[executor.js]
+    DecisaoFinal --> Armar[armarDecisao + countdown 5s]
+    Armar --> Exec[Executor.executarAposta]
     Exec --> Delay[Delay 300-800ms anti-bot]
-    Delay --> Chip[Seleciona ficha R$100]
+    Delay --> ChipDet{ChipDetector achou ficha?}
+    ChipDet -->|Nao 100%| Fallback[FALLBACK HEURISTICO coords fixas 207,415 e 733,415 BUG]
+    ChipDet -->|Sim| Chip[Seleciona ficha real]
     Chip --> Click[Click sintetico y=78%]
+    Fallback --> Click
 
-    Click --> Confirm{bet-confirmation tracker DOM e saldo OK em 10s?}
-    Confirm -->|Nao| Retry[Retry / log falha]
-    Confirm -->|Sim| Armed[Aposta armada]
+    Click --> Confirm{bet-confirmation 10s saldo decrementou?}
+    Confirm -->|Nao 100% atual| Retry[APOSTA NAO ENTROU saldo inalterado]
+    Confirm -->|Sim| Armed[Aposta confirmada]
 
     Armed --> DealerWS{WS resultado chegou?}
     DealerWS -->|Nao| DealerWS
@@ -60,23 +76,35 @@ flowchart TD
     Result -->|Sim| Win[VITORIA]
     Result -->|Nao| Loss[Derrota]
 
-    Win --> Toast[overlay.js toast verde +R$200 lucro]
+    Win --> Toast[overlay.js toast verde +R$5 lucro - A IMPLEMENTAR]
     Win --> UpdateBoard[Tabuleiro nova linha azul]
-    Win --> Sync[popup atualiza saldo]
-    Win --> Trigger[Mensagem de incentivo - A IMPLEMENTAR?]
+    Win --> Sync[popup atualiza saldo bug GET_GAME_DATA]
+    Win --> Trigger[Mensagem de incentivo - A IMPLEMENTAR]
 
     Loss --> Gale{Gale ativo?}
-    Gale -->|Sim| NextRound[Proxima rodada com stake dobrado]
+    Gale -->|Sim| NextRound[Proxima rodada com stake dobrado max 2 gales]
     Gale -->|Nao| WaitWS
 
     Toast --> WaitWS
     Sync --> WaitWS
+    Retry --> WaitWS
 
+    style AutoOn fill:#86efac
+    style AutoOff fill:#fde68a
+    style CallbackReg fill:#86efac
+    style ButtonState fill:#fdba74
+    style Aguardando fill:#fde68a
     style Win fill:#90EE90
     style Loss fill:#FFB6B6
-    style Decision fill:#FFD700
+    style DecisaoFinal fill:#FFD700
     style Trigger fill:#FFA500
+    style Toast fill:#FFA500
+    style Fallback fill:#FFB6B6
+    style Retry fill:#FFB6B6
     style CP3 fill:#87CEEB
     style CP6 fill:#87CEEB
     style CP7 fill:#87CEEB
     style Confirm fill:#87CEEB
+    style WmsgMatch fill:#87CEEB
+    style AutoStart fill:#87CEEB
+    style ChipDet fill:#87CEEB

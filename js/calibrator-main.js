@@ -218,5 +218,21 @@
     clicarHardware, executarAposta, SLOTS_PADRAO
   };
 
+  // Ponte ISOLATED -> MAIN para botao 🎯 CAL e auto-calibracao (Diego, 17/05).
+  // Overlay (ISOLATED world) nao acessa window.BBCalibrator do MAIN world direto.
+  // Recebe postMessage {kind:'BBCAL_RUN_REQ', reqId} e responde com
+  // {kind:'BBCAL_RUN_RESP', reqId, result}.
+  window.addEventListener('message', async (ev) => {
+    if (ev?.source !== window) return;
+    if (ev?.data?.kind !== 'BBCAL_RUN_REQ') return;
+    const reqId = ev.data.reqId;
+    try {
+      const result = await tudo();
+      window.postMessage({ kind: 'BBCAL_RUN_RESP', reqId, result }, '*');
+    } catch (e) {
+      window.postMessage({ kind: 'BBCAL_RUN_RESP', reqId, result: { ok: false, reason: e?.message || String(e) } }, '*');
+    }
+  });
+
   console.log(`${PREFIX} ✅ MAIN WORLD carregado — BBCalibrator disponivel no console`);
 })();

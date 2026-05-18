@@ -68,7 +68,14 @@ const Overlay = (() => {
       <div id="bb-autostart-bar" style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:rgba(99,102,241,0.10);border-bottom:1px solid rgba(99,102,241,0.3);font-size:11px;">
         <span id="bb-autostart-icon" style="font-size:14px;">⏳</span>
         <span id="bb-autostart-label" style="flex:1;color:#c7d2fe;font-weight:700;letter-spacing:0.3px;">Auto-start: inicializando…</span>
-        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v5fe9cd1</span>
+        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v8-cal+hitrate+wmsg</span>
+      </div>
+      <!-- Barra OPERACIONAL: calibracao + hit-rate de click + status WMSG -->
+      <div id="bb-ops-bar" style="display:flex;gap:6px;align-items:center;padding:6px 10px;background:rgba(15,23,42,0.6);border-bottom:1px solid rgba(99,102,241,0.2);font-size:10px;flex-wrap:wrap;">
+        <span id="bb-cal-badge" title="Status da calibracao da mesa" style="padding:3px 8px;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);border-radius:4px;color:#fbbf24;font-weight:700;">🎯 CAL: sem dado</span>
+        <span id="bb-hit-badge" title="Taxa de sucesso dos cliques (saldo decrementa)" style="padding:3px 8px;background:rgba(148,163,184,0.15);border:1px solid rgba(148,163,184,0.4);border-radius:4px;color:#94a3b8;font-weight:700;">🎲 CLICKS: 0/0</span>
+        <span id="bb-wmsg-badge" title="Ultimas 4 cores e match WMSG" style="flex:1;padding:3px 8px;background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.4);border-radius:4px;color:#c7d2fe;font-weight:700;text-align:center;">📊 WMSG: aguardando 4+ cores</span>
+        <button id="bb-btn-cal-now" title="Calibrar mesa agora (BBCalibrator.tudo())" style="padding:3px 8px;background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;border:none;border-radius:4px;font-weight:800;cursor:pointer;font-size:10px;">🎯 CAL</button>
       </div>
       <div class="bb-confirm-bar">
         <div class="bb-countdown-wrap">
@@ -1926,6 +1933,156 @@ const Overlay = (() => {
    * e DecisionEngine ainda nao estar rodando. Para de tentar depois de 60s
    * (60 tentativas) para nao ficar polling pra sempre se algo deu errado.
    */
+  /**
+   * Atualiza badge de calibracao no overlay (Diego, 17/05).
+   * Estado pode ser: 'ok', 'stale', 'missing', 'running'.
+   */
+  function setCalBadge(state, info) {
+    const el = document.getElementById('bb-cal-badge');
+    if (!el) return;
+    const presets = {
+      ok:      { txt: `🎯 CAL: ✅ ${info || ''}`.trim(), bg: 'rgba(34,197,94,0.15)', border: 'rgba(34,197,94,0.5)', color: '#86efac' },
+      stale:   { txt: `🎯 CAL: ⚠️ recalibrar`,            bg: 'rgba(251,191,36,0.2)', border: 'rgba(251,191,36,0.6)', color: '#fbbf24' },
+      missing: { txt: `🎯 CAL: ❌ sem calibracao`,         bg: 'rgba(239,68,68,0.18)', border: 'rgba(239,68,68,0.6)', color: '#fca5a5' },
+      running: { txt: `🎯 CAL: 🔄 calibrando…`,            bg: 'rgba(14,165,233,0.18)', border: 'rgba(14,165,233,0.5)', color: '#7dd3fc' }
+    };
+    const p = presets[state] || presets.missing;
+    el.textContent = p.txt;
+    el.style.background = p.bg;
+    el.style.borderColor = p.border;
+    el.style.color = p.color;
+  }
+
+  /**
+   * Atualiza badge de hit-rate dos cliques.
+   * Lê BetConfirmationTracker.taxa() — taxa < 50% nas ultimas 10 = alerta.
+   */
+  function refreshHitRateBadge() {
+    const el = document.getElementById('bb-hit-badge');
+    if (!el || typeof BetConfirmationTracker === 'undefined') return;
+    try {
+      const t = BetConfirmationTracker.taxa();
+      const total = t.total || 0;
+      const ok = t.confirmadas || 0;
+      const pct = total > 0 ? Math.round(100 * ok / total) : 0;
+      el.textContent = `🎲 CLICKS: ${ok}/${total} (${pct}%)`;
+      if (total === 0) {
+        el.style.background = 'rgba(148,163,184,0.15)';
+        el.style.borderColor = 'rgba(148,163,184,0.4)';
+        el.style.color = '#94a3b8';
+      } else if (pct >= 80) {
+        el.style.background = 'rgba(34,197,94,0.15)';
+        el.style.borderColor = 'rgba(34,197,94,0.5)';
+        el.style.color = '#86efac';
+      } else if (pct >= 50) {
+        el.style.background = 'rgba(251,191,36,0.15)';
+        el.style.borderColor = 'rgba(251,191,36,0.5)';
+        el.style.color = '#fbbf24';
+      } else {
+        el.style.background = 'rgba(239,68,68,0.18)';
+        el.style.borderColor = 'rgba(239,68,68,0.6)';
+        el.style.color = '#fca5a5';
+      }
+    } catch (_) {}
+  }
+
+  /**
+   * Atualiza badge de status do WMSG: mostra ultimas 4 cores e match (se houver).
+   * Diego (17/05) quer saber por que "agora nao esta detectando nenhum padrao" —
+   * isso explicita pra ele se eh falta de match (esperado) ou bug.
+   */
+  function refreshWmsgBadge() {
+    const el = document.getElementById('bb-wmsg-badge');
+    if (!el) return;
+    try {
+      const cores = typeof Collector !== 'undefined' && Collector.getCoresRecentes
+        ? (Collector.getCoresRecentes(4) || [])
+        : [];
+      if (cores.length < 4) {
+        el.textContent = `📊 WMSG: aguardando 4+ cores (tem ${cores.length})`;
+        el.style.color = '#94a3b8';
+        return;
+      }
+      const ultimas = cores.slice(-4);
+      const seq = ultimas.map(c => c === 'azul' ? 'A' : c === 'vermelho' ? 'V' : 'E').join('-');
+      const detected = typeof PatternEngine !== 'undefined' && PatternEngine.getLastDetectedStrategies
+        ? (PatternEngine.getLastDetectedStrategies() || [])
+        : [];
+      if (detected.length > 0) {
+        const top = detected[0];
+        el.textContent = `📊 WMSG: ${seq} → ${top.nome} (${top.acao}, ${top.confianca}%)`;
+        el.style.color = '#86efac';
+      } else {
+        el.textContent = `📊 WMSG: ${seq} → 🕓 nenhum dos 18 bateu`;
+        el.style.color = '#fde68a';
+      }
+    } catch (e) {
+      el.textContent = `📊 WMSG: erro (${e?.message || e})`;
+      el.style.color = '#fca5a5';
+    }
+  }
+
+  // Auto-calibracao apos 3 BET-CONFIRM ❌ seguidos (Diego, 17/05).
+  let _falhasSeguidas = 0;
+  let _autoCalEmCurso = false;
+  function registrarFalhaClick() {
+    _falhasSeguidas += 1;
+    refreshHitRateBadge();
+    if (_falhasSeguidas >= 3 && !_autoCalEmCurso) {
+      _autoCalEmCurso = true;
+      addLog(`🎯 ${_falhasSeguidas} apostas seguidas nao entraram — disparando recalibracao automatica`, 'warn');
+      setCalBadge('running');
+      dispararCalibracao().finally(() => {
+        _autoCalEmCurso = false;
+        _falhasSeguidas = 0;
+      });
+    }
+  }
+  function registrarSucessoClick() {
+    _falhasSeguidas = 0;
+    refreshHitRateBadge();
+  }
+
+  /**
+   * Dispara BBCalibrator.tudo() via console MAIN world (ponte ja existe).
+   * Atualiza badge antes/depois.
+   */
+  async function dispararCalibracao() {
+    setCalBadge('running');
+    addLog('🎯 Calibrando mesa (BBCalibrator.tudo())…', 'info');
+    try {
+      // BBCalibrator vive no MAIN world. Usamos ponte do CalibrationLoop ou postMessage.
+      // Caminho simples: chamar via window.BBCalibrator se disponivel no ISOLATED
+      // (geralmente nao esta — mas tem a ponte pra invocar).
+      const result = await new Promise((resolve, reject) => {
+        const reqId = `cal-${Date.now()}`;
+        const onResp = (ev) => {
+          if (ev?.data?.kind === 'BBCAL_RUN_RESP' && ev.data.reqId === reqId) {
+            window.removeEventListener('message', onResp);
+            resolve(ev.data.result);
+          }
+        };
+        window.addEventListener('message', onResp);
+        window.postMessage({ kind: 'BBCAL_RUN_REQ', reqId }, '*');
+        setTimeout(() => {
+          window.removeEventListener('message', onResp);
+          reject(new Error('timeout calibracao 15s'));
+        }, 15000);
+      });
+      if (result && result.ok) {
+        setCalBadge('ok', new Date().toLocaleTimeString('pt-BR').slice(0,5));
+        addLog('✅ Calibracao concluida. Novas coords salvas.', 'success');
+        try { chrome.storage.local.set({ 'bb-cal-ts': Date.now() }); } catch (_) {}
+      } else {
+        setCalBadge('missing');
+        addLog(`⚠ Calibracao falhou: ${result?.reason || 'sem detalhes'}. Use BBCalibrator.tudo() no console.`, 'warn');
+      }
+    } catch (e) {
+      setCalBadge('missing');
+      addLog(`❌ Calibracao deu erro: ${e?.message || e}. Tente no console: await BBCalibrator.tudo()`, 'error');
+    }
+  }
+
   function setAutoStartUI(icon, label, color) {
     const iconEl = document.getElementById('bb-autostart-icon');
     const labelEl = document.getElementById('bb-autostart-label');
@@ -2576,6 +2733,10 @@ const Overlay = (() => {
     atualizarAbaSaude();
     atualizarAbaGrafo();
     atualizarAbaBreakpoints();
+
+    // Badges operacionais (cal + hit-rate + WMSG): refresh em todo ciclo de UI.
+    try { refreshHitRateBadge(); } catch (_) {}
+    try { refreshWmsgBadge(); } catch (_) {}
   }
 
   /**
@@ -2715,6 +2876,51 @@ const Overlay = (() => {
       // do overlay, EXCETO quando Will parou manualmente (flag bb-paradoManual=true
       // persistida em chrome.storage.local). Resetada quando Will clica Iniciar manual.
       tentarAutoStart();
+
+      // BADGES OPERACIONAIS (Diego, 17/05): calibracao + hit-rate + WMSG status.
+      // Wire up:
+      //  - Botao CAL dispara dispararCalibracao()
+      //  - Evento bb-bet-confirmation atualiza hit-rate + dispara auto-cal apos 3 ❌
+      //  - Bootstrap inicial dos badges (sem dados ainda)
+      try {
+        const calBtn = document.getElementById('bb-btn-cal-now');
+        if (calBtn) {
+          calBtn.addEventListener('click', () => {
+            dispararCalibracao();
+          });
+        }
+        // Estado inicial do badge cal: ler chrome.storage pra ver se ja foi calibrada
+        chrome.storage.local.get('bb-cal-ts', (data) => {
+          const ts = data && data['bb-cal-ts'];
+          if (!ts) {
+            setCalBadge('missing');
+            // Auto-cal na primeira sessao (Diego, 17/05): se nunca calibrou, tenta sozinho
+            // assim que WS de mesa estiver conectado.
+            setTimeout(() => {
+              if (!CONFIG.modoPassivo && !_autoCalEmCurso) {
+                addLog('🎯 Primeira sessao sem calibracao — disparando automatica em 5s', 'info');
+                setTimeout(() => dispararCalibracao(), 5000);
+              }
+            }, 8000);
+          } else {
+            const horasDesde = (Date.now() - ts) / (1000 * 60 * 60);
+            if (horasDesde > 24) {
+              setCalBadge('stale');
+            } else {
+              setCalBadge('ok', new Date(ts).toLocaleTimeString('pt-BR').slice(0,5));
+            }
+          }
+        });
+        window.addEventListener('bb-bet-confirmation', (ev) => {
+          const veredito = ev?.detail?.veredito;
+          if (veredito === 'CONFIRMADA') registrarSucessoClick();
+          else if (veredito === 'NAO_ENTROU') registrarFalhaClick();
+        });
+        refreshHitRateBadge();
+        refreshWmsgBadge();
+      } catch (e) {
+        console.warn('[OPS-BADGES] falha no wireup:', e?.message || e);
+      }
       ultimoSaldoKey = null;
       ultimoResultadoKey = null;
       ultimoEstadoKey = null;
