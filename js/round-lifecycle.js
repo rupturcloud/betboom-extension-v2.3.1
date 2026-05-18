@@ -374,7 +374,11 @@ const RoundLifecycle = (() => {
     if (rodada) {
       rodada.anomalias.push(anomalia);
     }
-    warn(`Anomalia "${tipo}" na rodada ${rodada ? rodada.roundId : '<sem rodada>'}:`, anomalia);
+    // Diego (18/05): serializa pra log nao virar [object Object] no painel
+    // "Erros" do Chrome quando copia/cola.
+    let detalheStr = '';
+    try { detalheStr = JSON.stringify(detalhes || {}); } catch (_) { detalheStr = String(detalhes); }
+    warn(`Anomalia "${tipo}" rodada=${rodada ? rodada.roundId : '<sem rodada>'} fase=${faseNoMomento} detalhe=${detalheStr}`);
 
     const payload = {
       v: SCHEMA_VERSION,
@@ -427,7 +431,12 @@ const RoundLifecycle = (() => {
 
     const agoraMs = agora();
     const idleMs = agoraMs - rodada.ultimaAtividade;
-    if (idleMs > THRESHOLDS.semTransicaoMaxMs) {
+    // Diego (18/05): nao spamma anomalia "rodada_sem_transicao" em modo
+    // observacao OU quando aba esta hidden. O watchdog protege contra
+    // travas reais — modo observacao + janela escondida sao estados validos.
+    const ehObservacao = (typeof CONFIG !== 'undefined' && CONFIG.modoTeste === true);
+    const abaHidden = (typeof document !== 'undefined' && document.hidden === true);
+    if (idleMs > THRESHOLDS.semTransicaoMaxMs && !ehObservacao && !abaHidden) {
       const jaTem = rodada.anomalias.some(a => a.tipo === 'rodada_sem_transicao');
       if (!jaTem) {
         registrarAnomalia(rodada, 'rodada_sem_transicao', { idleMs });
