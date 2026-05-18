@@ -19,15 +19,39 @@
   const BRIDGE_RES = 'BB_CALIBRATOR_BRIDGE_RES';
   const PREFIX = '[BBCalibrator]';
 
-  const SLOTS_PADRAO = [
-    { id: 'chip5',     label: 'Ficha de R$ 5 (ou a menor disponivel)' },
-    { id: 'chip25',    label: 'Ficha de R$ 25 (opcional - ESC pula)' },
-    { id: 'chip100',   label: 'Ficha de R$ 100 (opcional - ESC pula)' },
-    { id: 'player',    label: 'Spot AZUL / PLAYER' },
-    { id: 'banker',    label: 'Spot VERMELHO / BANKER' },
-    { id: 'tie',       label: 'Spot VERDE / TIE (opcional - ESC pula)' },
-    { id: 'confirmar', label: 'Botao CONFIRMAR APOSTA (ESC se nao tiver)' }
+  // Lista oficial de fichas da barra BetBoom (Bac Bo Mini), em ordem da UI.
+  // Diego (17/05): calibrar so as fichas com valor <= saldo atual, senao
+  // Will fica clicando em ficha que nao consegue usar.
+  const CHIPS_BETBOOM = [5, 10, 25, 125, 500, 2500, 6000, 10000, 12000];
+
+  const SPOTS_FIXOS = [
+    { id: 'player',    label: 'Spot AZUL / PLAYER',                    required: true  },
+    { id: 'banker',    label: 'Spot VERMELHO / BANKER',                required: true  },
+    { id: 'tie',       label: 'Spot VERDE / TIE (opcional - ESC pula)', required: false },
+    { id: 'confirmar', label: 'Botao CONFIRMAR APOSTA (ESC se nao tiver)', required: false }
   ];
+
+  /**
+   * Monta lista de slots respeitando saldo: so inclui fichas <= saldoMax.
+   * Diego (17/05): com R$37, so calibra chip5, chip10, chip25; pula chip125+
+   * porque Will nao tem como clicar essas fichas (sem saldo).
+   */
+  function montarSlots(saldoMax) {
+    const saldo = Number(saldoMax);
+    const limite = Number.isFinite(saldo) && saldo > 0 ? saldo : Infinity;
+    const chipsCalibraveis = CHIPS_BETBOOM.filter((v) => v <= limite);
+    const chipSlots = chipsCalibraveis.map((v) => ({
+      id: `chip${v}`,
+      label: `Ficha de R$ ${v}`,
+      required: v === chipsCalibraveis[0] // pelo menos a menor eh obrigatoria
+    }));
+    const chipsPulados = CHIPS_BETBOOM.filter((v) => v > limite);
+    return { slots: [...chipSlots, ...SPOTS_FIXOS], chipsPulados, chipsCalibraveis };
+  }
+
+  // Mantido para compatibilidade com codigo legado que importa SLOTS_PADRAO.
+  // Default: todas as fichas (saldoMax=Infinity).
+  const SLOTS_PADRAO = montarSlots(Infinity).slots;
 
   function ler() {
     try {
@@ -119,17 +143,44 @@
     return data.coords[slotId];
   }
 
-  async function tudo() {
-    console.log(`${PREFIX} 🎯 calibracao guiada — abra a mesa do Bac Bo`);
-    banner('🎯 CALIBRACAO INICIADA', '#9333ea');
-    await new Promise((r) => setTimeout(r, 1200));
-    for (const slot of SLOTS_PADRAO) {
-      await capturar(slot.id);
+  async function tudo(opts = {}) {
+    const saldoMax = opts.saldoMax;
+    const { slots, chipsPulados, chipsCalibraveis } = montarSlots(saldoMax);
+    const saldoLabel = Number.isFinite(Number(saldoMax)) && Number(saldoMax) > 0
+      ? `R$ ${Number(saldoMax).toFixed(2)}`
+      : 'sem limite';
+
+    console.log(`${PREFIX} 🎯 calibracao guiada — saldo=${saldoLabel} | fichas a calibrar: ${chipsCalibraveis.join(', ')} | puladas: ${chipsPulados.join(', ')}`);
+    banner(`🎯 CALIBRACAO (saldo ${saldoLabel}) — ${chipsCalibraveis.length} fichas + spots`, '#9333ea');
+    await new Promise((r) => setTimeout(r, 1500));
+
+    if (chipsCalibraveis.length === 0) {
+      banner('⚠ Saldo insuficiente pra calibrar ate a menor ficha (R$5)', '#dc2626');
+      setTimeout(hideBanner, 4000);
+      return { ok: false, reason: 'saldo-insuficiente', chipsCalibraveis: [], chipsPulados };
+    }
+
+    let cancelado = false;
+    for (const slot of slots) {
+      const r = await capturar(slot.id);
+      if (!r && slot.required) {
+        // Usuario apertou ESC numa ficha obrigatoria — aborta
+        banner(`⚠ Calibracao abortada em "${slot.id}"`, '#dc2626');
+        cancelado = true;
+        break;
+      }
       await new Promise((r) => setTimeout(r, 300));
     }
-    banner('✅ CALIBRACAO COMPLETA', '#16a34a');
+
+    if (cancelado) {
+      setTimeout(hideBanner, 3000);
+      return { ok: false, reason: 'cancelado-pelo-usuario', chipsCalibraveis, chipsPulados };
+    }
+
+    banner(`✅ CALIBRADO — ${chipsCalibraveis.length} fichas (${chipsPulados.length} puladas por saldo)`, '#16a34a');
     setTimeout(hideBanner, 3500);
     console.log(`${PREFIX} ✅ feito.`, ler().coords);
+    return { ok: true, chipsCalibraveis, chipsPulados, coords: ler().coords };
   }
 
   function exportar() {
@@ -153,7 +204,19 @@
 
   function temCalibracao() {
     const c = ler().coords;
-    return !!(c && (c.chip5 || c.chip25) && c.player && c.banker);
+    if (!c || !c.player || !c.banker) return false;
+    // Qualquer ficha calibrada serve como prova
+    return CHIPS_BETBOOM.some((v) => c[`chip${v}`]);
+  }
+
+  /**
+   * Retorna lista de valores de fichas que ja foram calibradas.
+   * Util pra Decision Engine saber quais stakes sao executaveis.
+   */
+  function fichasCalibradas() {
+    const c = ler().coords;
+    if (!c) return [];
+    return CHIPS_BETBOOM.filter((v) => c[`chip${v}`]);
   }
 
   /**
@@ -181,14 +244,16 @@
     const spotDelayMs = opts.spotDelayMs || 250;
     const clicarConfirmar = opts.clicarConfirmar !== false;
 
-    const ordemFichas = stake >= 100 ? ['chip100', 'chip25', 'chip5']
-                      : stake >= 25  ? ['chip25', 'chip5', 'chip100']
-                      : ['chip5', 'chip25', 'chip100'];
-    const fichaId = ordemFichas.find((id) => obter(id));
-    if (!fichaId) {
+    // Escolhe ficha calibrada com valor mais proximo (e <=) do stake desejado.
+    // Diego (17/05): suporta nova lista BetBoom [5,10,25,125,500,2500,6000,10000,12000].
+    const calibradas = fichasCalibradas(); // ja em ordem crescente
+    if (calibradas.length === 0) {
       console.warn(`${PREFIX} sem ficha calibrada. Rode BBCalibrator.tudo()`);
       return { ok: false, motivo: 'sem-ficha-calibrada' };
     }
+    // Maior ficha calibrada que cabe no stake; se nenhuma cabe, a menor mesmo.
+    const fichaValor = [...calibradas].reverse().find((v) => v <= Number(stake)) || calibradas[0];
+    const fichaId = `chip${fichaValor}`;
 
     const spotId = (cor === 'azul' || cor === 'player' || cor === 'A') ? 'player'
                  : (cor === 'vermelho' || cor === 'banker' || cor === 'V') ? 'banker'
@@ -214,20 +279,19 @@
   }
 
   window.BBCalibrator = {
-    tudo, capturar, obter, exportar, limpar, temCalibracao,
-    clicarHardware, executarAposta, SLOTS_PADRAO
+    tudo, capturar, obter, exportar, limpar, temCalibracao, fichasCalibradas,
+    clicarHardware, executarAposta, SLOTS_PADRAO, CHIPS_BETBOOM
   };
 
   // Ponte ISOLATED -> MAIN para botao 🎯 CAL e auto-calibracao (Diego, 17/05).
-  // Overlay (ISOLATED world) nao acessa window.BBCalibrator do MAIN world direto.
-  // Recebe postMessage {kind:'BBCAL_RUN_REQ', reqId} e responde com
-  // {kind:'BBCAL_RUN_RESP', reqId, result}.
+  // Aceita {kind:'BBCAL_RUN_REQ', reqId, saldoMax} — filtra fichas pelo saldo.
   window.addEventListener('message', async (ev) => {
     if (ev?.source !== window) return;
     if (ev?.data?.kind !== 'BBCAL_RUN_REQ') return;
     const reqId = ev.data.reqId;
+    const saldoMax = ev.data.saldoMax;
     try {
-      const result = await tudo();
+      const result = await tudo({ saldoMax });
       window.postMessage({ kind: 'BBCAL_RUN_RESP', reqId, result }, '*');
     } catch (e) {
       window.postMessage({ kind: 'BBCAL_RUN_RESP', reqId, result: { ok: false, reason: e?.message || String(e) } }, '*');

@@ -68,7 +68,7 @@ const Overlay = (() => {
       <div id="bb-autostart-bar" style="display:flex;gap:8px;align-items:center;padding:6px 10px;background:rgba(99,102,241,0.10);border-bottom:1px solid rgba(99,102,241,0.3);font-size:11px;">
         <span id="bb-autostart-icon" style="font-size:14px;">⏳</span>
         <span id="bb-autostart-label" style="flex:1;color:#c7d2fe;font-weight:700;letter-spacing:0.3px;">Auto-start: inicializando…</span>
-        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v8-cal+hitrate+wmsg</span>
+        <span id="bb-autostart-hint" style="color:#94a3b8;font-size:10px;">v9-cal-saldo-aware</span>
       </div>
       <!-- Barra OPERACIONAL: calibracao + hit-rate de click + status WMSG -->
       <div id="bb-ops-bar" style="display:flex;gap:6px;align-items:center;padding:6px 10px;background:rgba(15,23,42,0.6);border-bottom:1px solid rgba(99,102,241,0.2);font-size:10px;flex-wrap:wrap;">
@@ -2048,12 +2048,13 @@ const Overlay = (() => {
    * Atualiza badge antes/depois.
    */
   async function dispararCalibracao() {
+    // Passa saldoMax pro BBCalibrator filtrar fichas (Diego, 17/05).
+    // Com R$37 so calibra chip5/10/25; pula chip125+ porque sem saldo
+    // nao tem como clicar na ficha pra registrar coord.
+    const saldoMax = Number.isFinite(Number(CONFIG.saldoReal)) ? Number(CONFIG.saldoReal) : null;
     setCalBadge('running');
-    addLog('🎯 Calibrando mesa (BBCalibrator.tudo())…', 'info');
+    addLog(`🎯 Calibrando mesa (saldo R$ ${saldoMax != null ? saldoMax.toFixed(2) : '?'}) — fichas filtradas pelo saldo`, 'info');
     try {
-      // BBCalibrator vive no MAIN world. Usamos ponte do CalibrationLoop ou postMessage.
-      // Caminho simples: chamar via window.BBCalibrator se disponivel no ISOLATED
-      // (geralmente nao esta — mas tem a ponte pra invocar).
       const result = await new Promise((resolve, reject) => {
         const reqId = `cal-${Date.now()}`;
         const onResp = (ev) => {
@@ -2063,23 +2064,34 @@ const Overlay = (() => {
           }
         };
         window.addEventListener('message', onResp);
-        window.postMessage({ kind: 'BBCAL_RUN_REQ', reqId }, '*');
+        window.postMessage({ kind: 'BBCAL_RUN_REQ', reqId, saldoMax }, '*');
+        // Timeout maior — calibracao pode levar 1+ min (cada ficha precisa de click manual)
         setTimeout(() => {
           window.removeEventListener('message', onResp);
-          reject(new Error('timeout calibracao 15s'));
-        }, 15000);
+          reject(new Error('timeout calibracao 5min'));
+        }, 300000);
       });
       if (result && result.ok) {
-        setCalBadge('ok', new Date().toLocaleTimeString('pt-BR').slice(0,5));
-        addLog('✅ Calibracao concluida. Novas coords salvas.', 'success');
+        const fichas = (result.chipsCalibraveis || []).join(',');
+        const pulados = (result.chipsPulados || []).length;
+        const info = `${new Date().toLocaleTimeString('pt-BR').slice(0,5)} fichas:[${fichas}]${pulados>0?` (${pulados} sem saldo)`:''}`;
+        setCalBadge('ok', info);
+        addLog(`✅ Calibrado: fichas R$${fichas || '?'}${pulados>0?` — ${pulados} fichas puladas (saldo insuficiente)`:''}`, 'success');
         try { chrome.storage.local.set({ 'bb-cal-ts': Date.now() }); } catch (_) {}
       } else {
         setCalBadge('missing');
-        addLog(`⚠ Calibracao falhou: ${result?.reason || 'sem detalhes'}. Use BBCalibrator.tudo() no console.`, 'warn');
+        const reason = result?.reason || 'sem detalhes';
+        if (reason === 'saldo-insuficiente') {
+          addLog(`⚠ Saldo R$ ${saldoMax?.toFixed(2) || '?'} insuficiente — minimo R$5 pra calibrar ate a menor ficha. Deposite e tente de novo.`, 'warn');
+        } else if (reason === 'cancelado-pelo-usuario') {
+          addLog('⚠ Calibracao cancelada (ESC numa ficha obrigatoria).', 'warn');
+        } else {
+          addLog(`⚠ Calibracao falhou: ${reason}. Use BBCalibrator.tudo({saldoMax: ${saldoMax}}) no console.`, 'warn');
+        }
       }
     } catch (e) {
       setCalBadge('missing');
-      addLog(`❌ Calibracao deu erro: ${e?.message || e}. Tente no console: await BBCalibrator.tudo()`, 'error');
+      addLog(`❌ Calibracao deu erro: ${e?.message || e}. Tente no console: await BBCalibrator.tudo({saldoMax: ${saldoMax}})`, 'error');
     }
   }
 
