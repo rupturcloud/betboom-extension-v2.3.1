@@ -220,6 +220,52 @@
   }
 
   /**
+   * Compoe um stake a partir de fichas calibradas (Diego, 17/05).
+   * BetBoom nao tem ficha de R$50 — pra apostar R$50 precisa clicar
+   * 2x na ficha R$25 (ou outra combinacao). Esta funcao retorna a
+   * sequencia greedy (maior ficha primeiro) que soma exatamente o stake.
+   *
+   * @param {number} stake - valor desejado
+   * @param {number[]} fichas - fichas disponiveis (default = calibradas)
+   * @param {object} opts - { maxClicks: 30 } pra evitar disparar 200 cliques
+   * @returns {{ok, sequencia, total, faltam, parcial, motivo}}
+   *   - ok=true: sequencia soma exato
+   *   - ok=false: nao conseguiu (saldo+fichas nao compoem). total=valor real
+   *     que compoe (arredondado pra baixo), parcial=sequencia parcial,
+   *     faltam=quanto sobrou sem compor.
+   */
+  function composeStake(stake, fichas, opts = {}) {
+    const maxClicks = opts.maxClicks || 30;
+    const lista = (fichas && fichas.length ? fichas : fichasCalibradas())
+      .filter((v) => Number.isFinite(v) && v > 0)
+      .sort((a, b) => b - a); // maior primeiro
+    if (lista.length === 0) {
+      return { ok: false, sequencia: [], total: 0, faltam: stake, motivo: 'sem-fichas-calibradas' };
+    }
+    if (!Number.isFinite(stake) || stake <= 0) {
+      return { ok: false, sequencia: [], total: 0, faltam: 0, motivo: 'stake-invalido' };
+    }
+    const sequencia = [];
+    let restante = Number(stake);
+    for (const ficha of lista) {
+      while (restante >= ficha && sequencia.length < maxClicks) {
+        sequencia.push(ficha);
+        restante -= ficha;
+      }
+      if (sequencia.length >= maxClicks) break;
+    }
+    const total = sequencia.reduce((a, b) => a + b, 0);
+    if (restante > 0 && sequencia.length < maxClicks) {
+      // Nao compoe exato — provavelmente stake nao eh multiplo das fichas
+      return { ok: false, sequencia, total, faltam: restante, motivo: 'stake-nao-multiplo' };
+    }
+    if (sequencia.length >= maxClicks && restante > 0) {
+      return { ok: false, sequencia, total, faltam: restante, motivo: `excedeu-${maxClicks}-cliques` };
+    }
+    return { ok: true, sequencia, total, faltam: 0 };
+  }
+
+  /**
    * Bridge: posta mensagem ao isolated world, que chama chrome.runtime → background → chrome.debugger.
    */
   function clicarHardware(slotId) {
@@ -244,16 +290,18 @@
     const spotDelayMs = opts.spotDelayMs || 250;
     const clicarConfirmar = opts.clicarConfirmar !== false;
 
-    // Escolhe ficha calibrada com valor mais proximo (e <=) do stake desejado.
-    // Diego (17/05): suporta nova lista BetBoom [5,10,25,125,500,2500,6000,10000,12000].
-    const calibradas = fichasCalibradas(); // ja em ordem crescente
-    if (calibradas.length === 0) {
+    // Diego (17/05): BetBoom nao tem todas as denominacoes (ex: nao tem R$50).
+    // Composicao greedy: pra apostar R$50, clica 2x na ficha R$25.
+    const compose = composeStake(stake);
+    if (compose.sequencia.length === 0) {
       console.warn(`${PREFIX} sem ficha calibrada. Rode BBCalibrator.tudo()`);
-      return { ok: false, motivo: 'sem-ficha-calibrada' };
+      return { ok: false, motivo: compose.motivo || 'sem-ficha-calibrada' };
     }
-    // Maior ficha calibrada que cabe no stake; se nenhuma cabe, a menor mesmo.
-    const fichaValor = [...calibradas].reverse().find((v) => v <= Number(stake)) || calibradas[0];
-    const fichaId = `chip${fichaValor}`;
+    if (!compose.ok) {
+      console.warn(`${PREFIX} ⚠ stake R$${stake} nao compoe exato com fichas calibradas (${fichasCalibradas().join(',')}). Apostando R$${compose.total} (faltam R$${compose.faltam}). Motivo: ${compose.motivo}`);
+    }
+    // Mantemos fichaId pro log/compat (1ª ficha da sequencia).
+    const fichaId = `chip${compose.sequencia[0]}`;
 
     const spotId = (cor === 'azul' || cor === 'player' || cor === 'A') ? 'player'
                  : (cor === 'vermelho' || cor === 'banker' || cor === 'V') ? 'banker'
@@ -264,23 +312,43 @@
       return { ok: false, motivo: `sem-spot-${cor}` };
     }
 
-    console.log(`${PREFIX} 🎲 ${fichaId} → ${spotId}${clicarConfirmar ? ' → confirmar' : ''}`);
-    const r1 = await clicarHardware(fichaId);
-    await new Promise((r) => setTimeout(r, chipDelayMs));
-    const r2 = await clicarHardware(spotId);
+    // Diego (17/05): COMPOSICAO — clica ficha + spot, ficha + spot, etc.
+    // Para apostar R$50 com fichas [5,10,25]: clica chip25→player, chip25→player.
+    // Cada par chip+spot soma o valor da ficha no slot.
+    console.log(`${PREFIX} 🎲 stake R$${stake} = [${compose.sequencia.join('+')}] → ${spotId}${clicarConfirmar ? ' → confirmar' : ''}`);
+    const etapas = [];
+    let todasOk = true;
+    for (let i = 0; i < compose.sequencia.length; i++) {
+      const ficha = compose.sequencia[i];
+      const idAtual = `chip${ficha}`;
+      const rChip = await clicarHardware(idAtual);
+      await new Promise((r) => setTimeout(r, chipDelayMs));
+      const rSpot = await clicarHardware(spotId);
+      etapas.push({ idx: i + 1, ficha, chip: rChip, spot: rSpot });
+      if (!rChip || !rSpot) {
+        todasOk = false;
+        console.warn(`${PREFIX} ⚠ falha no par ${i + 1}/${compose.sequencia.length}: chip=${rChip} spot=${rSpot}`);
+        // Continua mesmo com falha — algumas plataformas aceitam parcial
+      }
+      // Delay entre pares pra nao spammar
+      if (i < compose.sequencia.length - 1) {
+        await new Promise((r) => setTimeout(r, spotDelayMs));
+      }
+    }
     let r3 = true;
     if (clicarConfirmar && obter('confirmar')) {
       await new Promise((r) => setTimeout(r, spotDelayMs));
       r3 = await clicarHardware('confirmar');
     }
-    const ok = r1 && r2 && r3;
-    console.log(`${PREFIX} ${ok ? '✅' : '❌'} encerrado — chip=${r1} spot=${r2} confirm=${r3}`);
-    return { ok, fichaId, spotId, etapas: { chip: r1, spot: r2, confirmar: r3 } };
+    const ok = todasOk && r3;
+    const totalReal = compose.sequencia.reduce((a, b) => a + b, 0);
+    console.log(`${PREFIX} ${ok ? '✅' : '❌'} encerrado — ${compose.sequencia.length} pares (R$${totalReal}) confirm=${r3}`);
+    return { ok, fichaId, spotId, sequencia: compose.sequencia, totalReal, faltam: compose.faltam, etapas, confirmar: r3 };
   }
 
   window.BBCalibrator = {
     tudo, capturar, obter, exportar, limpar, temCalibracao, fichasCalibradas,
-    clicarHardware, executarAposta, SLOTS_PADRAO, CHIPS_BETBOOM
+    composeStake, clicarHardware, executarAposta, SLOTS_PADRAO, CHIPS_BETBOOM
   };
 
   // Ponte ISOLATED -> MAIN para botao 🎯 CAL e auto-calibracao (Diego, 17/05).
