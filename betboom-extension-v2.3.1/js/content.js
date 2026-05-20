@@ -579,9 +579,9 @@
 
   function aplicarSaldoOficial(valor, source) {
     const num = parseFloat(valor);
-    
-    if (isNaN(num) || num <= 5) {
-      console.warn(`[SALDO IGNORADO] ${source}: ${valor} (muito baixo)`);
+
+    if (isNaN(num) || num < 0) {
+      console.warn(`[SALDO IGNORADO] ${source}: ${valor} (inválido/negativo)`);
       return;
     }
 
@@ -592,16 +592,23 @@
       return;
     }
 
-    // Checa prioridade se estiver trocando de fonte
-    if (parserState.lastSaldoSource && parserState.lastSaldoSource !== source) {
-      const currPri = SALDO_PRIORITY.indexOf(parserState.lastSaldoSource);
-      const newPri = SALDO_PRIORITY.indexOf(source);
-      
-      // Se a fonte atual tem prioridade maior (índice menor) e não expirou, ignora a nova
-      if (currPri !== -1 && (newPri === -1 || newPri > currPri)) {
-         // Mantemos a fonte antiga se for melhor, a menos que seja uma atualização do mesmo canal
-         // Aqui permitimos a atualização para não travar o saldo, mas registramos
-      }
+    // R99-A1+saldo: REJEITAR betboom-platform — esse canal carrega saldo
+    // total da conta (depósitos + bônus + tudo) que NÃO é o saldo em jogo.
+    // O único saldo relevante pra apostar é o `evo-game` (saldo na mesa
+    // Evolution). Foi a origem do R$ 2969 zumbi.
+    if (typeof source === 'string' && source.toLowerCase().includes('betboom-platform')) {
+      console.debug(`[BetBoom Auto] [saldo] 🛑 IGNORADO ${source}: R$${num} — canal betboom-platform não é saldo em jogo`);
+      return;
+    }
+
+    // R99-A1+saldo: hierarquia de fontes — evo-game é canônico.
+    //   evo-game > walker:evo-game > dom:* > walker:* > outros
+    // Se já temos evo-game e chega outra fonte, NUNCA sobrescreve
+    // (a não ser que o evo-game seja antigo demais — fora de escopo aqui).
+    const sourceAtual = parserState.lastSaldoSource;
+    if (sourceAtual && sourceAtual.startsWith('evo-game') && !source.startsWith('evo-game')) {
+      // Já temos saldo canônico do jogo; ignora fontes secundárias.
+      return;
     }
 
     const mudouValor = parserState.lastSaldoReal !== num;
