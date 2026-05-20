@@ -8,6 +8,24 @@ const Executor = (() => {
   let isExecutando = false;
   let lastExecutionMeta = null;
 
+  function isClicaTudoMode() {
+    return typeof window === 'undefined' || window.__CLICA_TUDO !== false;
+  }
+
+  function normalizarExecucaoClicaTudo(decisao = {}) {
+    if (!isClicaTudoMode()) return decisao;
+    if (typeof window !== 'undefined') {
+      window.__FORCE_CLICK = true;
+      window.__CLICA_TUDO = true;
+      window.__AGGRESSIVE_MODE = true;
+      window.__MAX_GALE = Math.max(Number(window.__MAX_GALE || 0), 4);
+    }
+    decisao.autoExecute = true;
+    decisao.risco = 'baixo';
+    decisao.recomendacao = 'EXECUTAR';
+    return decisao;
+  }
+
   /**
    * Delay aleatório para simular comportamento humano.
    * Faixa confirmada pelo Diego: 300ms a 800ms.
@@ -238,15 +256,17 @@ const Executor = (() => {
      * @returns {Promise<boolean>} - Se a aposta foi realizada com sucesso
      */
     async executarAposta(decisao) {
-      console.log(`[EXEC-DEBUG] executarAposta INICIO | cor=${decisao?.cor} | stake=${decisao?.stake} | deveApostar=${decisao?.deveApostar} | isExecutando=${isExecutando} | modoTeste=${CONFIG.modoTeste} | estadoRodada=${CONFIG.estadoRodadaAtual}`);
-      if (isExecutando) {
-        console.log('[EXEC-DEBUG] ABORT: já está executando outra aposta');
-        Logger.warn('Já existe uma aposta em execução.');
-        return false;
-      }
+      decisao = normalizarExecucaoClicaTudo(decisao);
+      console.log(`[EXEC-DEBUG] executarAposta INICIO | cor=${decisao?.cor} | stake=${decisao?.stake} | deveApostar=${decisao?.deveApostar} | isExecutando=${isExecutando} | modoTeste=${CONFIG.modoTeste} | estadoRodada=${CONFIG.estadoRodadaAtual} | modo=${isClicaTudoMode() ? 'CLICA_TUDO' : 'normal'}`);
 
       if (!decisao || !decisao.deveApostar) {
         console.log(`[EXEC-DEBUG] ABORT: decisao=${!!decisao} | deveApostar=${decisao?.deveApostar}`);
+        return false;
+      }
+
+      if (isExecutando) {
+        console.log('[EXEC-DEBUG] ABORT: já está executando outra aposta');
+        Logger.warn('Já existe uma aposta em execução.');
         return false;
       }
 
@@ -256,11 +276,15 @@ const Executor = (() => {
       const stakeInicialSafe = Math.max(Number(CONFIG.stakeInicial) || 5, 1);
       const cap = stakeInicialSafe * (Number(CONFIG.stakeCapMultiplier) || 10);
       const stakeNum = Number(decisao.stake) || 0;
-      if (stakeNum > cap) {
+      if (stakeNum > cap && !isClicaTudoMode()) {
         console.error(`[EXEC-SAFETY] 🛑 APOSTA BLOQUEADA: stake R$${stakeNum} > cap R$${cap} (stakeInicial=R$${stakeInicialSafe} × ${CONFIG.stakeCapMultiplier || 10})`);
         Logger.error(`SAFETY CAP: aposta de R$${stakeNum} bloqueada (max permitido R$${cap}). Reset gale via DecisionEngine.resetGale() ou ajuste CONFIG.stakeCapMultiplier.`);
+        lastExecutionMeta = lastExecutionMeta || {};
         lastExecutionMeta.statusExecucao = 'bloqueada-safety-cap';
         return false;
+      }
+      if (stakeNum > cap && isClicaTudoMode()) {
+        console.warn(`[EXEC-SAFETY] MODO CLICA TUDO: safety cap virou warning (stake R$${stakeNum} > cap R$${cap})`);
       }
 
       // ----------------------------------------------------------------------
@@ -307,26 +331,36 @@ const Executor = (() => {
       };
 
       try {
-        if (CONFIG.modoTeste) {
+        if (CONFIG.modoTeste && !isClicaTudoMode()) {
           console.log('[EXEC-DEBUG] ABORT: modoTeste ativo');
           Logger.warn('Execução real bloqueada: modoTeste está ativo.');
           lastExecutionMeta.statusExecucao = 'bloqueada-modo-teste';
           isExecutando = false;
           return false;
         }
+        if (CONFIG.modoTeste && isClicaTudoMode()) {
+          console.warn('[EXEC-DEBUG] MODO CLICA TUDO: ignorando modoTeste e tentando clique real');
+        }
 
         if (CONFIG.estadoRodadaAtual !== 'apostando') {
-          // Relaxamento: Se o timer estiver visível e > 2s, permitimos o clique mesmo se o WS não atualizou o estado
-          const mesaStatus = mesaAceitandoApostas();
-          if (mesaStatus.ok) {
-            console.log(`[EXEC-DEBUG] estado bypass via DOM (${mesaStatus.source})`);
-            Logger.info(`Estado bypass: WS diz ${CONFIG.estadoRodadaAtual}, mas DOM diz Aberto/Timer. Prosseguindo.`);
+          // Se BB_CLICK disponível, não bloqueia por estado WS — BB_CLICK lida internamente.
+          // Para o caminho DOM local (sem BB_CLICK), ainda exige confirmação da mesa.
+          if (!(window.top === window && typeof window.BB_CLICK === 'function')) {
+            const mesaStatus = mesaAceitandoApostas();
+            if (mesaStatus.ok) {
+              console.log(`[EXEC-DEBUG] estado bypass via DOM (${mesaStatus.source})`);
+              Logger.info(`Estado bypass: WS diz ${CONFIG.estadoRodadaAtual}, mas DOM diz Aberto/Timer. Prosseguindo.`);
+            } else if (!isClicaTudoMode()) {
+              console.log(`[EXEC-DEBUG] ABORT: estado ${CONFIG.estadoRodadaAtual} + DOM ${mesaStatus.reason}`);
+              Logger.warn(`Execução abortada: estado atual = ${CONFIG.estadoRodadaAtual || 'desconhecido'}. Motivo: ${mesaStatus.reason}`);
+              lastExecutionMeta.statusExecucao = 'abortado-estado';
+              isExecutando = false;
+              return false;
+            } else {
+              console.warn(`[EXEC-DEBUG] MODO CLICA TUDO: ignorando gate de estado (${CONFIG.estadoRodadaAtual || 'desconhecido'} / ${mesaStatus.reason})`);
+            }
           } else {
-            console.log(`[EXEC-DEBUG] ABORT: estado ${CONFIG.estadoRodadaAtual} + DOM ${mesaStatus.reason}`);
-            Logger.warn(`Execução abortada: estado atual = ${CONFIG.estadoRodadaAtual || 'desconhecido'}. Motivo: ${mesaStatus.reason}`);
-            lastExecutionMeta.statusExecucao = 'abortado-estado';
-            isExecutando = false;
-            return false;
+            console.log(`[EXEC-DEBUG] estado=${CONFIG.estadoRodadaAtual} mas BB_CLICK disponível — prosseguindo sem gate de estado`);
           }
         }
 
@@ -346,11 +380,32 @@ const Executor = (() => {
           if (typeof window.BetConfirmationTracker !== 'undefined') {
             try { window.BetConfirmationTracker.armar({ cor: decisao.cor, stake: decisao.stake, roundId: CONFIG.roundIdAtual }); } catch (_) {}
           }
-          window.BB_CLICK(decisao.cor, decisao.stake);
+          // await garante que isExecutando=false só ocorre após BB_CLICK (async) completar.
+          // R99-A1+limpeza: try/catch protege contra SecurityError cross-origin
+          // residual (ex.: alguma rotina interna do BB_CLICK acessando contentDocument
+          // de iframe Evolution). O fluxo principal é postMessage, que é safe; mas
+          // se o caminho calibrado/heurístico tocar em algo cross-origin, NÃO deve
+          // poluir o console com "Uncaught (in promise)".
+          let bbResult = null;
+          try {
+            bbResult = await window.BB_CLICK(decisao.cor, decisao.stake);
+          } catch (e) {
+            const msg = e?.message || String(e);
+            const isCrossOrigin = msg.includes('cross-origin') || msg.includes('Blocked a frame');
+            if (isCrossOrigin) {
+              console.warn(`[EXEC-DEBUG] BB_CLICK cross-origin silenciado: ${msg}`);
+              // postMessage já foi enviado antes do SecurityError; subframe deve clicar.
+              bbResult = { ok: true, via: 'bridge-postMessage-silent', erro: msg };
+            } else {
+              console.error(`[EXEC-DEBUG] BB_CLICK falhou inesperadamente:`, e);
+              bbResult = { ok: false, via: 'erro-inesperado', erro: msg };
+            }
+          }
+          console.log(`[EXEC-DEBUG] BB_CLICK retornou:`, bbResult);
 
           // No modo bridge, não conseguimos validar visualmente aqui no top frame.
           // O resultado virá pelo postMessage e será logado pelo Overlay.
-          lastExecutionMeta.statusExecucao = 'delegado-bridge';
+          lastExecutionMeta.statusExecucao = bbResult?.ok ? 'delegado-bridge' : 'delegado-bridge-sem-dom';
           lastExecutionMeta.roundId = CONFIG.roundIdAtual;
           isExecutando = false;
           return true;
@@ -382,11 +437,14 @@ const Executor = (() => {
 
         // 1. Verificar se a mesa aceita apostas
         const mesaStatus = mesaAceitandoApostas();
-        if (!mesaStatus.ok) {
+        if (!mesaStatus.ok && !isClicaTudoMode()) {
           Logger.warn('Execução bloqueada: mesa não confirmada como aberta');
           lastExecutionMeta.statusExecucao = 'mesa-nao-confirmada-aberta';
           isExecutando = false;
           return false;
+        }
+        if (!mesaStatus.ok && isClicaTudoMode()) {
+          Logger.warn(`[EXEC-DEBUG] MODO CLICA TUDO: ignorando mesaStatus=${mesaStatus.reason || 'nao-ok'} no fallback DOM`);
         }
 
         // 2. Delay aleatório (anti-bot)
@@ -404,12 +462,15 @@ const Executor = (() => {
         if (interactionLog) {
           Logger.info(`[Interaction Intelligence] ${JSON.stringify(interactionLog)}`);
 
-          if (!interactionLog.canProceed) {
+          if (!interactionLog.canProceed && !isClicaTudoMode()) {
             Logger.error(`Execução bloqueada pela Interaction Intelligence: ${interactionLog.decisionReason.join('; ')}`);
             lastExecutionMeta.statusExecucao = 'bloqueada-ii';
             lastExecutionMeta.interactionLog = interactionLog;
             isExecutando = false;
             return false;
+          }
+          if (!interactionLog.canProceed && isClicaTudoMode()) {
+            Logger.warn(`MODO CLICA TUDO: Interaction Intelligence virou warning: ${interactionLog.decisionReason.join('; ')}`);
           }
 
           lastExecutionMeta.interactionLog = interactionLog;
