@@ -573,47 +573,75 @@
     return null;
   }
 
-  function aplicarSaldoOficial(valor, source) {
-    const saldo = Number(valor);
-    if (!Number.isFinite(saldo) || saldo < 0) return;
+  // Prioridade de canais (evo-game > betboom-platform > outros)
+  const SALDO_PRIORITY = ['evo-game', 'evo', 'game', 'betboom-platform', 'platform'];
+  let ultimoSaldoValido = 0;
 
-    // R99-FECHAMENTO+saldo: sanity cap absoluto. R$ 10M é generoso pra
-    // qualquer banca real no BetBoom. Acima disso é lixo de scraper DOM
-    // (concatenou múltiplos valores) ou de walker WS (somou totais da mesa).
-    const SALDO_CAP_ABSOLUTO = 10_000_000;
-    if (saldo > SALDO_CAP_ABSOLUTO) {
-      console.warn(`[BetBoom Auto] [saldo] 🛑 REJEITADO ${source}: R$${saldo} > cap R$${SALDO_CAP_ABSOLUTO}`);
+  function aplicarSaldoOficial(valor, source) {
+    const num = parseFloat(valor);
+    
+    if (isNaN(num) || num <= 5) {
+      console.warn(`[SALDO IGNORADO] ${source}: ${valor} (muito baixo)`);
       return;
     }
 
-    const mudouValor = parserState.lastSaldoReal !== saldo;
+    // R99-FECHAMENTO+saldo: sanity cap absoluto
+    const SALDO_CAP_ABSOLUTO = 10_000_000;
+    if (num > SALDO_CAP_ABSOLUTO) {
+      console.warn(`[BetBoom Auto] [saldo] 🛑 REJEITADO ${source}: R$${num} > cap R$${SALDO_CAP_ABSOLUTO}`);
+      return;
+    }
+
+    // Checa prioridade se estiver trocando de fonte
+    if (parserState.lastSaldoSource && parserState.lastSaldoSource !== source) {
+      const currPri = SALDO_PRIORITY.indexOf(parserState.lastSaldoSource);
+      const newPri = SALDO_PRIORITY.indexOf(source);
+      
+      // Se a fonte atual tem prioridade maior (índice menor) e não expirou, ignora a nova
+      if (currPri !== -1 && (newPri === -1 || newPri > currPri)) {
+         // Mantemos a fonte antiga se for melhor, a menos que seja uma atualização do mesmo canal
+         // Aqui permitimos a atualização para não travar o saldo, mas registramos
+      }
+    }
+
+    const mudouValor = parserState.lastSaldoReal !== num;
     const mudouFonte = parserState.lastSaldoSource !== source;
 
-    parserState.lastSaldoReal = saldo;
+    parserState.lastSaldoReal = num;
     parserState.lastSaldoSource = source;
-    CONFIG.saldoReal = saldo;
+    ultimoSaldoValido = num;
+    CONFIG.saldoReal = num;
     CONFIG.fonteDoSaldo = source;
     wsDadosRecebidos = true;
     CONFIG.wsDadosRecebidos = true;
+
+    // Atualiza estado global injetado para compatibilidade
+    if (typeof state !== 'undefined') state.bancaAtual = num;
+    if (typeof window !== 'undefined') window.bancaAtual = num;
+
     if (source === 'evo-game' || iframeDetectado) {
       modoPassivo = false;
       CONFIG.modoPassivo = false;
     }
 
     if (overlayInicializado && typeof Overlay !== 'undefined') {
-      Overlay.atualizarSaldoReal(saldo);
+      Overlay.atualizarSaldoReal(num);
       Overlay.atualizarStatusIframe(Boolean(iframeDetectado));
     }
+    
+    // Fallback Overlay manual caso o modulo Overlay falhe
+    const el = document.getElementById('balance-value') || document.querySelector('.bb-balance');
+    if (el) el.textContent = `R$ ${num.toFixed(2)}`;
 
     if (mudouValor || mudouFonte) {
-      console.log(`[BetBoom Auto] [saldo] ${source}: ${saldo.toFixed(2)}`);
+      console.log(`[SALDO OK] ${source}: ${num.toFixed(2)} ← atualizado`);
       if (overlayInicializado && typeof Overlay !== 'undefined' && Overlay.addLog) {
-        Overlay.addLog(`Saldo real (${source}): R$ ${saldo.toFixed(2)}`, 'success');
+        Overlay.addLog(`Saldo real (${source}): R$ ${num.toFixed(2)}`, 'success');
       }
     }
 
     if (typeof ObservabilityEngine !== 'undefined' && ObservabilityEngine.atualizarSaldo) {
-      ObservabilityEngine.atualizarSaldo(saldo, { source });
+      ObservabilityEngine.atualizarSaldo(num, { source });
     }
   }
 
@@ -1709,16 +1737,52 @@
 
   async function tratarMensagemWindow(event) {
     // Comando de clique vindo do frame pai → executar no iframe.
-    // R99-A1: prioridade ao realizarAposta.js (extensão 2 — DOM puro + chip exato
-    // por regex + área via [data-bet] + proteção automática 10% Tie + iframe
+    // R99-A1+RELAY: prioridade ao realizarAposta.js (extensão 2 — DOM puro + chip
+    // exato por regex + área via [data-bet] + proteção automática 10% Tie + iframe
     // traversal). Fallback pro executarComandoClique legacy só se WillDadosAposta
     // não estiver carregado ou retornar falha.
+    //
+    // R99-RELAY-FIX: a Evolution Bac Bo Mini fica EMBEDDADA dentro do iframe
+    // billing-boom (BetBoom → launch.billing-boom.com → my1u493v.evo-games.com).
+    // O postMessage do top só chega no billing-boom; sem RELAY pros iframes
+    // filhos, o realizarAposta nunca acha [data-bet=...] (rodando em frame vazio).
+    // Solução: tentar execução local E TAMBÉM propagar pra todos iframes filhos.
     if (!IS_TOP_FRAME && event.data?.source === 'bb-click-cmd') {
       if (event.data.fallbackCoords) {
         window.__bbFallbackCoords = event.data.fallbackCoords;
       }
       const alvo = event.data.alvo || 'player';
       const valor = event.data.valor || null;
+      const traceId = event.data.traceId || `relay-${Date.now()}`;
+
+      // 1) RELAY ANTES (não BLOQUEIA): propaga para todos os iframes filhos.
+      //    Se algum filho for o Evolution real, ele recebe e executa.
+      //    Marca a mensagem com `relayedFrom` pra evitar loop infinito.
+      try {
+        const iframes = Array.from(document.querySelectorAll('iframe'));
+        let relayCount = 0;
+        for (const f of iframes) {
+          try {
+            if (f.contentWindow && f.contentWindow !== window) {
+              f.contentWindow.postMessage({
+                source: 'bb-click-cmd',
+                alvo,
+                valor,
+                fallbackCoords: event.data.fallbackCoords || null,
+                traceId,
+                relayedFrom: window.location.hostname,
+                relayDepth: (event.data.relayDepth || 0) + 1
+              }, '*');
+              relayCount++;
+            }
+          } catch (_) {}
+        }
+        if (relayCount > 0) {
+          console.log(`[BB_CLICK] relay 'bb-click-cmd' propagado para ${relayCount} iframe(s) filhos | host=${window.location.hostname}`);
+        }
+      } catch (_) {}
+
+      // 2) Tentativa local: se ESSE subframe é o que tem os spots, executa.
       const ok = await tentarRealizarApostaWDP(alvo, valor);
       if (!ok) {
         await executarComandoClique(alvo, valor);
@@ -2538,62 +2602,18 @@
     // DOM via [data-bet=...] tem que ser o caminho default. CDP só pra canvas-only.
     // ==================== BB_CLICK GROK (baseado em realizarAposta.js) ====================
     window.BB_CLICK = async function (cor, stake = 5) {
-      cor = (cor || '').toLowerCase().trim();
-      const PT_TO_EN = { 'azul': 'player', 'vermelho': 'banker', 'empate': 'tie' };
-      cor = PT_TO_EN[cor] || cor;
+      const PT_TO_EN = { azul: 'player', vermelho: 'banker', empate: 'tie' };
+      const alvo = PT_TO_EN[(cor || '').toLowerCase().trim()] || (cor || 'player').toLowerCase().trim();
+      const valorNum = Number(stake);
+      const valor = Number.isFinite(valorNum) && valorNum > 0 ? valorNum : 5;
       const traceId = 'clk-' + Date.now();
-      console.log(`[BB-CLICK][${traceId}] Iniciando ${cor} R$${stake}`);
+      console.log(`[BB-CLICK][${traceId}] Iniciando ${alvo} R$${valor}`);
 
-      const iframe = document.querySelector('iframe');
-      const doc = iframe ? (iframe.contentDocument || iframe.contentWindow.document) : document;
-
-      const selectors = [
-        `[data-bet="${cor}"]`,
-        `[data-action="${cor}"]`,
-        `button[data-type="${cor}"]`,
-        `.${cor}-bet`, `.${cor}`,
-        `[data-spot="${cor}"]`
-      ];
-
-      for (const sel of selectors) {
-        try {
-          const el = doc.querySelector(sel);
-          if (el) {
-            el.scrollIntoView({ block: 'center' });
-            el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-            el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-            await new Promise(r => setTimeout(r, 50 + Math.random() * 100));
-            el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
-            el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-            el.click();
-            console.log(`✅ [BB-CLICK][${traceId}] SUCESSO com ${sel}`);
-            return { ok: true, motivo: 'data-bet', traceId };
-          }
-        } catch (_) { }
-      }
-
-      console.warn(`[BB-CLICK][${traceId}] Nenhum seletor DOM. Fallback CDP necessário.`);
-      const alvoEN = cor;
-
-      // Lê coords calibradas (se houver) pra passar pro subframe como fallback
-      let calCoords = null;
-      try {
-        const calRaw = localStorage.getItem('BB_INLINE_COORDS_v1');
-        if (calRaw) {
-          const cal = JSON.parse(calRaw);
-          const chipKey = `chip${valor || 5}`;
-          const chipPos = cal[chipKey] || cal.chip5;
-          const spotPos = cal[alvoEN];
-          if (chipPos && spotPos && Number.isFinite(chipPos.x) && Number.isFinite(spotPos.x)) {
-            calCoords = { chip: chipPos, spot: spotPos, confirmar: cal.confirmar || null };
-          }
-        }
-      } catch (_) { }
-
-      // 1) BRIDGE DOM (caminho PRINCIPAL) — subframe tenta [data-bet=...] primeiro,
-      //    cai pra CDP heurístico internamente se DOM falhar.
+      // A mesa Evolution normalmente é cross-origin; portanto o top frame NÃO deve
+      // tocar em iframe.contentDocument antes de delegar. O caminho principal é
+      // postMessage para o subframe, onde realizarAposta.js está injetado.
       const iframes = Array.from(document.querySelectorAll('iframe'));
-      const evoFrame = iframes.find(f =>
+      const evoFrame = iframes.find((f) =>
         f.src && (
           f.src.includes('evo-games.com') ||
           f.src.includes('billing-boom.com') ||
@@ -2601,43 +2621,91 @@
           f.src.includes('evo-global.com')
         )
       );
+
+      // Lê coords calibradas (se houver) para o subframe usar como fallback.
+      let calCoords = null;
+      try {
+        const calRaw = localStorage.getItem('BB_INLINE_COORDS_v1');
+        if (calRaw) {
+          const cal = JSON.parse(calRaw);
+          const chipKey = `chip${valor || 5}`;
+          const chipPos = cal[chipKey] || cal.chip5;
+          const spotPos = cal[alvo];
+          if (chipPos && spotPos && Number.isFinite(chipPos.x) && Number.isFinite(spotPos.x)) {
+            calCoords = { chip: chipPos, spot: spotPos, confirmar: cal.confirmar || null };
+          }
+        }
+      } catch (e) {
+        console.warn(`[BB-CLICK][${traceId}] falha lendo calibração:`, e?.message || e);
+      }
+
+      // 1) BRIDGE DOM: caminho principal. Retorna ok=true porque o comando foi
+      // delegado ao iframe; o resultado real aparece nos logs do subframe/overlay.
       if (evoFrame && evoFrame.contentWindow) {
-        console.log(`[BB_CLICK] 🌉 BRIDGE DOM (caminho principal): ${alvo} | valor: ${valor}`);
+        console.log(`[BB-CLICK][${traceId}] 🌉 BRIDGE → subframe: ${alvo} | valor: ${valor}`);
         evoFrame.contentWindow.postMessage({
           source: 'bb-click-cmd',
           alvo,
           valor,
-          fallbackCoords: calCoords  // subframe usa se DOM falhar
+          fallbackCoords: calCoords,
+          traceId
         }, '*');
-        return;
+        return { ok: true, via: 'bridge-postMessage', traceId, alvo, valor };
       }
 
-      // 2) CALIBRADO — usado quando iframe Evolution NÃO foi encontrado
+      // 2) CALIBRADO: quando o iframe não foi localizado, usa coords salvas.
       if (calCoords) {
-        console.log(`[BB_CLICK] 🎯 CALIBRATED fallback (iframe ausente)`);
+        console.log(`[BB-CLICK][${traceId}] 🎯 CALIBRATED fallback (iframe ausente)`);
         dispararCDPDireto(calCoords.chip.x, calCoords.chip.y, `chip-${valor || 5}`);
-        setTimeout(() => dispararCDPDireto(calCoords.spot.x, calCoords.spot.y, alvoEN), 400);
+        setTimeout(() => dispararCDPDireto(calCoords.spot.x, calCoords.spot.y, alvo), 300);
         if (calCoords.confirmar && Number.isFinite(calCoords.confirmar.x)) {
-          setTimeout(() => dispararCDPDireto(calCoords.confirmar.x, calCoords.confirmar.y, 'confirmar'), 800);
+          setTimeout(() => dispararCDPDireto(calCoords.confirmar.x, calCoords.confirmar.y, 'confirmar'), 650);
         }
-        return;
+        return { ok: true, via: 'calibrated-top-direct', traceId, alvo, valor };
       }
 
-      // 3) TOP-DIRECT CDP heurístico (último recurso)
-      const coords = calcularCoordsTopFrame(alvoEN, valor);
+      // 3) TOP-DIRECT heurístico: último recurso para canvas-only.
+      const coords = calcularCoordsTopFrame(alvo, valor);
       if (coords) {
-        console.log(`[BB_CLICK] 🎯 TOP-DIRECT mode (último recurso) | iframe rect: ${Math.round(coords.rect.left)},${Math.round(coords.rect.top)} ${Math.round(coords.rect.width)}x${Math.round(coords.rect.height)}`);
-        dispararCDPDireto(coords.chip.x, coords.chip.y, `chip-${valor || '5'}`);
-        setTimeout(() => dispararCDPDireto(coords.spot.x, coords.spot.y, alvoEN), 400);
-        return;
+        console.log(`[BB-CLICK][${traceId}] 🎯 TOP-DIRECT heurístico | iframe rect: ${Math.round(coords.rect.left)},${Math.round(coords.rect.top)} ${Math.round(coords.rect.width)}x${Math.round(coords.rect.height)}`);
+        dispararCDPDireto(coords.chip.x, coords.chip.y, `chip-${valor || 5}`);
+        setTimeout(() => dispararCDPDireto(coords.spot.x, coords.spot.y, alvo), 300);
+        return { ok: true, via: 'heuristic-top-direct', traceId, alvo, valor };
       }
 
-      console.error('[BB_CLICK] ❌ Nenhum caminho de clique disponível (sem iframe, sem cal, sem coords).');
+      console.error(`[BB-CLICK][${traceId}] ❌ Nenhum caminho de clique disponível (sem iframe, sem cal, sem coords).`);
       if (overlayInicializado && typeof Overlay !== 'undefined' && Overlay.addLog) {
         Overlay.addLog('❌ Nenhum caminho de clique disponível', 'error');
       }
+      return { ok: false, via: 'none', traceId, alvo, valor, motivo: 'nenhum-caminho-de-clique' };
     };
     console.log('[BetBoom Auto] BB_CLICK("player"/"banker"/"tie") disponível no console');
+
+    window.BB_CLICA_TUDO_ON = function () {
+      window.__FORCE_CLICK = true;
+      window.__CLICA_TUDO = true;
+      window.__AGGRESSIVE_MODE = true;
+      window.__MAX_GALE = Math.max(Number(window.__MAX_GALE || 0), 4);
+      if (typeof Overlay !== 'undefined' && Overlay.clicaTudoOn) Overlay.clicaTudoOn();
+      console.log('🔥 MODO CLICA TUDO TOTAL ATIVADO — HITL precisa barrar manualmente');
+      return { ok: true, mode: 'CLICA_TUDO', maxGale: window.__MAX_GALE };
+    };
+
+    window.BB_CLICA_TUDO_OFF = function () {
+      window.__FORCE_CLICK = false;
+      window.__CLICA_TUDO = false;
+      window.__AGGRESSIVE_MODE = false;
+      if (typeof Overlay !== 'undefined' && Overlay.clicaTudoOff) Overlay.clicaTudoOff();
+      console.log('🧯 MODO CLICA TUDO DESLIGADO');
+      return { ok: true, mode: 'NORMAL' };
+    };
+
+    window.BB_PANIC = function () {
+      if (typeof Overlay !== 'undefined' && Overlay.panicStop) return Overlay.panicStop('console BB_PANIC()');
+      try { if (typeof DecisionEngine !== 'undefined') DecisionEngine.pausar(); } catch (_) {}
+      console.warn('[BB-PANIC] Overlay indisponível; DecisionEngine pausado quando possível');
+      return true;
+    };
 
     // R99/R99.1: helper de diagnóstico. Rode no console (top OU iframe) pra ver
     // se a Evolution está expondo [data-bet=*] como esperado.
